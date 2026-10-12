@@ -20,6 +20,7 @@ param(
     [switch]$List,
     [string]$Add,
     [string]$Name,
+    [ValidateNotNullOrEmpty()]
     [string]$ConfigPath = (Join-Path $env:APPDATA 'GitHubAppUpdater\github-apps.json'),
     [switch]$Pause
 )
