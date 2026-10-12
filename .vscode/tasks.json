@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "GitHub apps: check for updates",
+      "type": "process",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-CheckOnly"],
+      "problemMatcher": []
+    },
+    {
+      "label": "GitHub apps: update all",
+      "type": "process",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1"],
+      "problemMatcher": []
+    },
+    {
+      "label": "GitHub apps: discover and update",
+      "type": "process",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-Discover"],
+      "problemMatcher": []
+    },
+    {
+      "label": "GitHub apps: show list",
+      "type": "process",
+      "command": "pwsh",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-List"],
+      "problemMatcher": []
+    }
+  ]
+}
