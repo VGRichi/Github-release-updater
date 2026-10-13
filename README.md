@@ -132,13 +132,6 @@ A checksum confirms you got **exactly the file on the release page**. It can't t
 
 Thanks to the Reddit commenters whose feedback shaped the security rules and the move to a proper module.
 
-## Upgrading from GitHubAppUpdater
-
-Reforge is the new name of GitHubAppUpdater (v1 and v2). Your app list moves over automatically the first time you load Reforge. To clean up:
-
-1. Remove the old module: `Remove-Item (Join-Path (Split-Path $PROFILE) 'Modules\GitHubAppUpdater') -Recurse`
-2. The commands have new names: `Add-GitHubApp` is now `Add-ReforgeApp`, and so on. `Get-Command -Module Reforge` lists them.
-3. If you used v1's `upgh` command, remove its line from your profile (`notepad $PROFILE`). To keep a short name, add your own alias there: `Set-Alias upgh Update-ReforgeApp`.
 ## Limitations
 
 - Version checks use the numbers only, so `1.2.0-beta3` → `1.2.0-beta4` isn't detected as an update.
