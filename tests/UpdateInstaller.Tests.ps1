@@ -293,6 +293,31 @@ Describe 'Updating installer apps' {
             (Get-ReforgeApp -ConfigPath $config | Update-ReforgeApp -ConfigPath $config).Status | Should -Be 'Updated'
         }
 
+        Context 'leftover work folders' {
+            BeforeEach {
+                $workRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+                $stale = New-Item -ItemType Directory -Path (Join-Path $workRoot 'reforge-0123abcd')
+                $stale.LastWriteTime = (Get-Date).AddDays(-2)
+                $fresh = New-Item -ItemType Directory -Path (Join-Path $workRoot 'reforge-89abcdef')
+                $notOurs = New-Item -ItemType Directory -Path (Join-Path $workRoot 'reforge-notes')
+                $notOurs.LastWriteTime = (Get-Date).AddDays(-2)
+                InModuleScope Reforge -Parameters @{ W = $workRoot } { $script:SavedWorkRoot = $script:WorkRoot; $script:WorkRoot = $W }
+            }
+            AfterEach { InModuleScope Reforge { $script:WorkRoot = $script:SavedWorkRoot } }
+
+            It 'deletes old ones from crashed runs, and only those' {
+                Update-ReforgeApp -ConfigPath $config | Out-Null
+                $stale.FullName | Should -Not -Exist
+                $fresh.FullName | Should -Exist
+                $notOurs.FullName | Should -Exist
+            }
+
+            It 'deletes nothing with -WhatIf' {
+                Update-ReforgeApp -ConfigPath $config -WhatIf | Out-Null
+                $stale.FullName | Should -Exist
+            }
+        }
+
         It 'reports a name that is not in the list' {
             Update-ReforgeApp 'Nope' -ConfigPath $config -ErrorAction SilentlyContinue -ErrorVariable err | Should -BeNullOrEmpty
             $err | Should -HaveCount 1

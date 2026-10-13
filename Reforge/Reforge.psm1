@@ -18,6 +18,8 @@ if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -Lit
     }
 }
 $script:ListChanged = $false
+$script:BackupsToKeep = 3                      # per app; older backup folders are deleted
+$script:WorkRoot = [IO.Path]::GetTempPath()    # downloads are extracted in reforge-* folders here
 $script:UninstallPaths = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -102,9 +104,16 @@ function Get-LatestRelease([string]$Repository, [bool]$Prerelease, [hashtable]$H
 }
 
 function New-WorkFolder {
-    $path = Join-Path ([IO.Path]::GetTempPath()) ('reforge-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $path = Join-Path $script:WorkRoot ('reforge-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path $path -WhatIf:$false | Out-Null
     $path
+}
+
+function Remove-StaleWorkFolder {
+    # Work folders are deleted after each update; this catches ones left by a crashed or killed run
+    Get-ChildItem -LiteralPath $script:WorkRoot -Directory -Filter 'reforge-*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^reforge-[0-9a-f]{8}$' -and $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }
 
 function Save-ReleaseAsset($Asset, [string]$Folder) {
@@ -429,6 +438,15 @@ function Undo-ArchiveContent([System.Collections.Generic.List[object]]$Journal) 
     }
 }
 
+function Remove-OldBackup([string]$AppBackupDir, [int]$Keep) {
+    # Backup folders are named by date and time, so sorting by name puts the newest first
+    Get-ChildItem -LiteralPath $AppBackupDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object Name -match '^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d$' |
+        Sort-Object Name -Descending |
+        Select-Object -Skip $Keep |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
+}
+
 function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$ConfigPath) {
     $Result.Installed = $App.InstalledVersion
     $destinations = Get-AppDestination $App
@@ -455,7 +473,8 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
 
         $safeName = $App.Name -replace '[\\/:*?"<>|]', '_'
         $stamp    = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-        $backupRoot = Join-Path (Join-Path (Join-Path (Split-Path -Parent $ConfigPath) 'backups') $safeName) $stamp
+        $appBackups = Join-Path (Join-Path (Split-Path -Parent $ConfigPath) 'backups') $safeName
+        $backupRoot = Join-Path $appBackups $stamp
         $journal = [System.Collections.Generic.List[object]]::new()
         $i = 0
         try {
@@ -470,6 +489,7 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
             throw "Couldn't update $dest (is the app running?): $($_.Exception.Message) Files already replaced were put back."
         }
         if (Test-Path -LiteralPath $backupRoot) { Write-Verbose "Replaced files were backed up to $backupRoot" }
+        Remove-OldBackup $appBackups $script:BackupsToKeep
 
         Set-AppField $App 'InstalledVersion' $Release.tag_name
         $Result.Installed = $Release.tag_name
@@ -691,6 +711,7 @@ function Update-ReforgeApp {
             if (-not ($apps | Where-Object { $_.Name -like $n })) { Write-Error "No app named '$n' in the list." }
         }
 
+        if (-not $WhatIfPreference) { Remove-StaleWorkFolder }
         $headers = Get-RequestHeader $Token
         $programs = $null
         $script:ListChanged = $false
