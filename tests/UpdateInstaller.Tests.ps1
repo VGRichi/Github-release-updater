@@ -19,7 +19,12 @@ Describe 'Updating installer apps' {
 
     Context 'Invoke-Installer' {
         BeforeAll {
-            Mock -ModuleName Reforge Start-Process { [pscustomobject]@{ ExitCode = 0 } }
+            function New-FakeProcess([int]$ExitCode) {
+                $p = [pscustomobject]@{ ExitCode = $ExitCode; Handle = [IntPtr]1 }
+                $p | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { }
+                $p
+            }
+            Mock -ModuleName Reforge Start-Process { New-FakeProcess 0 }
             function New-InstallerFile([string]$Name, [string]$Marker) {
                 $path = Join-Path $TestDrive $Name
                 [IO.File]::WriteAllBytes($path, [Text.Encoding]::ASCII.GetBytes("MZ...$Marker..."))
@@ -61,9 +66,28 @@ Describe 'Updating installer apps' {
         }
 
         It 'returns the installer exit code' {
-            Mock -ModuleName Reforge Start-Process { [pscustomobject]@{ ExitCode = 1603 } }
+            Mock -ModuleName Reforge Start-Process { New-FakeProcess 1603 }
             $file = New-InstallerFile 'fail.msi' ''
             InModuleScope Reforge -Parameters @{ F = $file } { Invoke-Installer $F '' } | Should -Be 1603
+        }
+
+        It 'never waits for the processes an installer starts' {
+            Should -Invoke Start-Process -ModuleName Reforge -Times 0 -ParameterFilter { $Wait }
+        }
+    }
+
+    Context 'Start-InstallerProcess' {
+        It 'returns when the installer exits, even if it started a program that keeps running' {
+            # The "installer" starts a long-running program (like an app opened after setup) and exits with 7
+            $pidFile = Join-Path $TestDrive 'child.pid'
+            $installer = "`$c = Start-Process powershell.exe -ArgumentList '-NoProfile', '-Command', 'Start-Sleep 60' -WindowStyle Hidden -PassThru; Set-Content -LiteralPath '$pidFile' `$c.Id; exit 7"
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            try {
+                InModuleScope Reforge -Parameters @{ S = $installer } { Start-InstallerProcess 'powershell.exe' "-NoProfile -WindowStyle Hidden -Command $S" } | Should -Be 7
+                $watch.Elapsed.TotalSeconds | Should -BeLessThan 45
+            } finally {
+                if (Test-Path -LiteralPath $pidFile) { Stop-Process -Id (Get-Content -LiteralPath $pidFile) -Force -ErrorAction SilentlyContinue }
+            }
         }
     }
 
