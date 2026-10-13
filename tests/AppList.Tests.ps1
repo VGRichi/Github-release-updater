@@ -31,6 +31,20 @@ Describe 'The app list' {
             $app.PSObject.Properties['Destinations'] | Should -BeNullOrEmpty
         }
 
+        It 'replaces an existing list without leaving a temp file behind' {
+            Write-TestAppList $config @([pscustomobject]@{ Name = 'Old'; Repository = 'o/old' })
+            InModuleScope Reforge -Parameters @{ P = $config } { Save-AppList $P @([pscustomobject]@{ Name = 'New'; Repository = 'o/new' }) }
+            (Read-TestAppList $config).Name | Should -Be 'New'
+            "$config.tmp" | Should -Not -Exist
+        }
+
+        It 'accepts a path relative to the current folder' {
+            Push-Location $TestDrive
+            try { InModuleScope Reforge { Save-AppList '.\relative-apps.json' @([pscustomobject]@{ Name = 'One'; Repository = 'o/one' }) } }
+            finally { Pop-Location }
+            Join-Path $TestDrive 'relative-apps.json' | Should -Exist
+        }
+
         It 'writes a JSON array even for one app, creating the folder' {
             $nested = Join-Path $TestDrive ('new-' + [guid]::NewGuid().ToString('N') + '\apps.json')
             InModuleScope Reforge -Parameters @{ P = $nested } { Save-AppList $P @([pscustomobject]@{ Name = 'One'; Repository = 'o/one' }) }
