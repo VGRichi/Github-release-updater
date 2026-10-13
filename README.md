@@ -1,4 +1,9 @@
-# Reforge
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/reforge-logo-dark.svg">
+    <img src="assets/reforge-logo.svg" alt="Reforge" width="480">
+  </picture>
+</p>
 
 A PowerShell module that keeps Windows apps and tools installed from **GitHub releases** up to date, the way winget does for everything else.
 
