@@ -181,23 +181,29 @@ function Get-InstalledProgram {
         Where-Object { $_.DisplayName -and -not $_.SystemComponent }
 }
 
+function Get-ArchPattern {
+    # How release file names spell this PC's architecture, and the ones it can't use
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+        @{ Mine = '(?i)arm64|aarch64'; Other = '(?i)x64|amd64|x86_64|win64|ia32|i386|(?<!_)x86' }
+    } else {
+        @{ Mine = '(?i)x64|amd64|x86_64|win64'; Other = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit' }
+    }
+}
+
+function Test-NameHasWord([string]$Name, [string[]]$Word) {
+    # Not inside a longer word, so "emacs" doesn't count as "mac" (but "linux64" counts as "linux")
+    $Name -match ('(?i)(?<![a-z])(' + ($Word -join '|') + ')(?![a-z])')
+}
+
 function Select-InstallerAsset($Release, [string]$Pattern, [bool]$WantMsi) {
     if ($Pattern) { return $Release.assets | Where-Object name -like $Pattern | Select-Object -First 1 }
-
-    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        $myArch    = '(?i)arm64|aarch64'
-        $otherArch = '(?i)x64|amd64|x86_64|win64|ia32|i386|(?<!_)x86'
-    } else {
-        $myArch    = '(?i)x64|amd64|x86_64|win64'
-        $otherArch = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit'
-    }
-
+    $arch = Get-ArchPattern
     $Release.assets |
-        Where-Object { $_.name -match '(?i)\.(msi|exe)$' -and $_.name -notmatch '(?i)portable|mac|darwin|linux' } |
+        Where-Object { $_.name -match '(?i)\.(msi|exe)$' -and -not (Test-NameHasWord $_.name 'portable', 'mac', 'macos', 'osx', 'darwin', 'linux') } |
         ForEach-Object {
             $score = 0
-            if ($_.name -match $myArch) { $score += 10 }
-            elseif ($_.name -match $otherArch) { $score -= 100 }
+            if ($_.name -match $arch.Mine) { $score += 10 }
+            elseif ($_.name -match $arch.Other) { $score -= 100 }
             if (($_.name -match '(?i)\.msi$') -eq $WantMsi) { $score += 20 }   # same installer type as what's installed
             if ($_.name -match '(?i)setup|install') { $score += 2 }
             [pscustomobject]@{ Asset = $_; Score = $score }
@@ -270,18 +276,20 @@ function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
 
 function Select-ArchiveAsset($Release, [string]$Pattern) {
     if ($Pattern) { return $Release.assets | Where-Object name -like $Pattern | Select-Object -First 1 }
-    $myArch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { '(?i)arm64|aarch64' } else { '(?i)x64|amd64|x86_64|win64' }
+    $arch = Get-ArchPattern
     $Release.assets |
         Where-Object {
             $_.name -match '(?i)\.(zip|7z|tar\.gz|tgz|tar\.xz)$' -and
-            $_.name -notmatch '(?i)source|src|debug|pdb|symbols|linux|mac|darwin|native|steamrt'
+            -not (Test-NameHasWord $_.name 'source', 'src', 'debug', 'pdb', 'symbols', 'linux', 'mac', 'macos', 'osx', 'darwin', 'native', 'steamrt')
         } |
         ForEach-Object {
             $score = 0
-            if ($_.name -match $myArch) { $score += 10 }
+            if ($_.name -match $arch.Mine) { $score += 10 }
+            elseif ($_.name -match $arch.Other) { $score -= 100 }
             if ($_.name -match '(?i)win') { $score += 5 }
             [pscustomobject]@{ Asset = $_; Score = $score }
         } |
+        Where-Object Score -ge 0 |
         Sort-Object Score -Descending |
         Select-Object -First 1 -ExpandProperty Asset
 }

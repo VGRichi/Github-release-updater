@@ -73,9 +73,16 @@ Describe 'Asset selection and versions' {
             InModuleScope Reforge -Parameters @{ Release = $release } { (Select-InstallerAsset $Release '*arm64.msi' $true).name } | Should -Be 'App-arm64.msi'
         }
 
-        It 'does not mistake names containing "mac" for macOS builds' -Tag KnownBug {
+        It 'does not mistake names containing "mac" for macOS builds' {
             $release = New-TestRelease -Assets (New-TestAsset 'emacs-29.4-installer.exe')
             InModuleScope Reforge -Parameters @{ Release = $release } { (Select-InstallerAsset $Release '' $false).name } | Should -Be 'emacs-29.4-installer.exe'
+        }
+
+        It 'still ignores <Name>' -TestCases @(
+            @{ Name = 'App-macos-setup.exe' }, @{ Name = 'App_osx.exe' }, @{ Name = 'App-linux64.exe' }, @{ Name = 'App.Portable.exe' }
+        ) {
+            $release = New-TestRelease -Assets (New-TestAsset $Name)
+            InModuleScope Reforge -Parameters @{ Release = $release } { Select-InstallerAsset $Release '' $false } | Should -BeNullOrEmpty
         }
     }
 
@@ -123,9 +130,24 @@ Describe 'Asset selection and versions' {
             InModuleScope Reforge -Parameters @{ Release = $release } { (Select-ArchiveAsset $Release '*full.7z').name } | Should -Be 'tool-full.7z'
         }
 
-        It 'does not pick the arm64 archive when a generic Windows one exists' -Tag KnownBug {
+        It 'does not pick the arm64 archive when a generic Windows one exists' {
             $release = New-TestRelease -Assets (New-TestAsset 'tool-win-arm64.zip'), (New-TestAsset 'tool-win.zip')
             InModuleScope Reforge -Parameters @{ Release = $release } { (Select-ArchiveAsset $Release '').name } | Should -Be 'tool-win.zip'
+        }
+
+        It 'picks nothing rather than an archive for another architecture' {
+            $release = New-TestRelease -Assets (New-TestAsset 'tool-win-arm64.zip'), (New-TestAsset 'tool-win-x86.zip')
+            InModuleScope Reforge -Parameters @{ Release = $release } { Select-ArchiveAsset $Release '' } | Should -BeNullOrEmpty
+        }
+
+        It 'treats win32 as a Windows name, not 32-bit' {
+            $release = New-TestRelease -Assets (New-TestAsset 'tool-win32.zip')
+            InModuleScope Reforge -Parameters @{ Release = $release } { (Select-ArchiveAsset $Release '').name } | Should -Be 'tool-win32.zip'
+        }
+
+        It 'does not take "Emacs" or "Macro" for macOS builds' {
+            $release = New-TestRelease -Assets (New-TestAsset 'emacs-29-win64.zip'), (New-TestAsset 'MacroTool-win64.zip')
+            InModuleScope Reforge -Parameters @{ Release = $release } { Select-ArchiveAsset $Release '' } | Should -Not -BeNullOrEmpty
         }
     }
 }
