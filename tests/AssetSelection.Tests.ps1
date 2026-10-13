@@ -100,6 +100,39 @@ Describe 'Asset selection and versions' {
         }
     }
 
+    Context 'Select-InstallerAsset with real release file lists' {
+        BeforeAll {
+            # Copied from the actual releases (October 2026)
+            $git = New-TestRelease 'v2.56.0.windows.2' -Assets @(
+                'Git-2.56.0.2-64-bit.exe', 'Git-2.56.0.2-64-bit.tar.bz2', 'Git-2.56.0.2-arm64.exe', 'Git-2.56.0.2-arm64.tar.bz2',
+                'MinGit-2.56.0.2-32-bit.zip', 'MinGit-2.56.0.2-64-bit.zip', 'MinGit-2.56.0.2-arm64.zip',
+                'pdbs-for-git-arm64-2.56.0.2-1.zip', 'PortableGit-2.56.0.2-64-bit.7z.exe', 'PortableGit-2.56.0.2-arm64.7z.exe'
+            ).ForEach({ New-TestAsset $_ })
+            $npp = New-TestRelease 'v8.9.8.1' -Assets @(
+                'npp.8.9.8.1.checksums.sha256', 'npp.8.9.8.1.Installer.arm64.exe', 'npp.8.9.8.1.Installer.exe', 'npp.8.9.8.1.Installer.x64.exe',
+                'npp.8.9.8.1.Installer.x64.exe.sig', 'npp.8.9.8.1.Installer.x64.msi', 'npp.8.9.8.1.portable.x64.7z', 'npp.8.9.8.1.portable.x64.zip'
+            ).ForEach({ New-TestAsset $_ })
+        }
+        AfterEach { $env:PROCESSOR_ARCHITECTURE = 'AMD64' }
+
+        It 'picks <Expected> for <Repo> on <Arch> (msi installed: <Msi>)' -TestCases @(
+            @{ Repo = 'git'; Arch = 'AMD64'; Msi = $false; Expected = 'Git-2.56.0.2-64-bit.exe' }
+            @{ Repo = 'git'; Arch = 'ARM64'; Msi = $false; Expected = 'Git-2.56.0.2-arm64.exe' }
+            @{ Repo = 'npp'; Arch = 'AMD64'; Msi = $false; Expected = 'npp.8.9.8.1.Installer.x64.exe' }
+            @{ Repo = 'npp'; Arch = 'AMD64'; Msi = $true; Expected = 'npp.8.9.8.1.Installer.x64.msi' }
+            @{ Repo = 'npp'; Arch = 'ARM64'; Msi = $false; Expected = 'npp.8.9.8.1.Installer.arm64.exe' }
+        ) {
+            $env:PROCESSOR_ARCHITECTURE = $Arch
+            $release = if ($Repo -eq 'git') { $git } else { $npp }
+            InModuleScope Reforge -Parameters @{ Release = $release; Msi = $Msi } { (Select-InstallerAsset $Release '' $Msi).name } | Should -Be $Expected
+        }
+
+        It 'never picks a portable build or a self-extracting archive' {
+            $release = New-TestRelease -Assets (New-TestAsset 'PortableGit-2.56.0.2-64-bit.7z.exe'), (New-TestAsset 'Tool-x64.zip.exe')
+            InModuleScope Reforge -Parameters @{ Release = $release } { Select-InstallerAsset $Release '' $false } | Should -BeNullOrEmpty
+        }
+    }
+
     Context 'Select-ArchiveAsset on an x64 PC' {
         BeforeAll { $env:PROCESSOR_ARCHITECTURE = 'AMD64' }
 
