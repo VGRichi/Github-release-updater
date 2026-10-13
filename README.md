@@ -89,7 +89,7 @@ Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' 
 | `-Rename` | Rename files while copying |
 | `-Keep` | Files that are added if missing but never overwritten (your settings), by name or path, e.g. `'*.ini'` or `'config\*'` |
 
-Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
+Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`; the backups of the last 3 updates per tool are kept. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
 
 > **Online games:** DLL mods like DXVK or OptiScaler can trigger anti-cheat systems. Only use them where that's safe.
 

@@ -61,6 +61,31 @@ Describe 'Updating archive tools' {
         Get-Content -LiteralPath $backups[0].FullName -Raw | Should -Be 'old d3d11'
     }
 
+    It 'keeps only the newest 3 backups for the app, and nothing else is touched' {
+        $appBackups = Join-Path $case 'Reforge\backups\DXVK (Test)'
+        foreach ($old in '2025-01-01_10-00-00', '2025-02-01_10-00-00', '2025-03-01_10-00-00', '2025-04-01_10-00-00', 'my notes') {
+            New-Item -ItemType Directory -Path (Join-Path $appBackups $old) | Out-Null
+        }
+        Update-ReforgeApp -ConfigPath $config | Out-Null
+        $left = @(Get-ChildItem -LiteralPath $appBackups -Directory | ForEach-Object Name | Sort-Object)
+        $left | Should -HaveCount 4
+        $left | Should -Contain 'my notes'
+        $left | Should -Contain '2025-04-01_10-00-00'
+        $left | Should -Contain '2025-03-01_10-00-00'
+        $left | Should -Not -Contain '2025-02-01_10-00-00'
+    }
+
+    It 'keeps every backup when the update fails' {
+        $appBackups = Join-Path $case 'Reforge\backups\DXVK (Test)'
+        foreach ($old in '2025-01-01_10-00-00', '2025-02-01_10-00-00', '2025-03-01_10-00-00', '2025-04-01_10-00-00') {
+            New-Item -ItemType Directory -Path (Join-Path $appBackups $old) | Out-Null
+        }
+        $app.Subfolder = 'arm64'
+        Write-TestAppList $config @($app)
+        Update-ReforgeApp -ConfigPath $config 3>$null | Out-Null
+        Get-ChildItem -LiteralPath $appBackups -Directory | Should -HaveCount 4
+    }
+
     It 'reports UpToDate on the next run, without downloading' {
         Update-ReforgeApp -ConfigPath $config | Out-Null
         (Update-ReforgeApp -ConfigPath $config).Status | Should -Be 'UpToDate'
