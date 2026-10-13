@@ -332,7 +332,8 @@ function Get-ArchiveContentRoot([string]$Extracted, [string]$Subfolder) {
     throw "Folder '$Subfolder' was not found inside the archive."
 }
 
-function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [string]$BackupDir) {
+function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [string]$BackupDir, [System.Collections.Generic.List[object]]$Journal) {
+    # Every replaced or added file goes into $Journal, so Undo-ArchiveContent can put things back
     $ProgressPreference = 'SilentlyContinue'   # hide per-file progress; the main progress bar stays
     $include = @($App.Include) | Where-Object { $_ }
     $keep    = @($App.Keep)    | Where-Object { $_ }
@@ -353,18 +354,33 @@ function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [strin
         $relTarget = if ($relDir) { Join-Path $relDir $leaf } else { $leaf }
         $target    = Join-Path $Destination $relTarget
 
+        $backup = $null
         if (Test-Path -LiteralPath $target) {
             # Files marked "Keep" (like your settings) are only added if missing, never overwritten
             if ($keep | Where-Object { $leaf -like $_ -or $file.Name -like $_ }) { continue }
             $backup = Join-Path $BackupDir $relTarget
             New-Item -ItemType Directory -Path (Split-Path -Parent $backup) -Force -WhatIf:$false | Out-Null
-            Copy-Item -LiteralPath $target -Destination $backup -Force -WhatIf:$false
+            Copy-Item -LiteralPath $target -Destination $backup -Force -WhatIf:$false -ErrorAction Stop
         }
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force -WhatIf:$false | Out-Null
-        Copy-Item -LiteralPath $file.FullName -Destination $target -Force -WhatIf:$false
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force -WhatIf:$false -ErrorAction Stop
+        if ($null -ne $Journal) { $Journal.Add([pscustomobject]@{ Target = $target; Backup = $backup }) }
         $copied++
     }
     $copied
+}
+
+function Undo-ArchiveContent([System.Collections.Generic.List[object]]$Journal) {
+    # Newest first: restore replaced files from their backup, delete added ones
+    for ($i = $Journal.Count - 1; $i -ge 0; $i--) {
+        $entry = $Journal[$i]
+        try {
+            if ($entry.Backup) { Copy-Item -LiteralPath $entry.Backup -Destination $entry.Target -Force -WhatIf:$false -ErrorAction Stop }
+            else { Remove-Item -LiteralPath $entry.Target -Force -WhatIf:$false -ErrorAction Stop }
+        } catch {
+            Write-Warning "Couldn't put back $($entry.Target): $($_.Exception.Message)"
+        }
+    }
 }
 
 function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$ConfigPath) {
@@ -394,11 +410,18 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
         $safeName = $App.Name -replace '[\\/:*?"<>|]', '_'
         $stamp    = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
         $backupRoot = Join-Path (Join-Path (Join-Path (Split-Path -Parent $ConfigPath) 'backups') $safeName) $stamp
+        $journal = [System.Collections.Generic.List[object]]::new()
         $i = 0
-        foreach ($dest in $destinations) {
-            $i++
-            $n = Copy-ArchiveContent $App $source $dest (Join-Path $backupRoot $i)
-            Write-Verbose "Copied $n file(s) to $dest"
+        try {
+            foreach ($dest in $destinations) {
+                $i++
+                $n = Copy-ArchiveContent $App $source $dest (Join-Path $backupRoot $i) $journal
+                Write-Verbose "Copied $n file(s) to $dest"
+            }
+        } catch {
+            # All or nothing: a half-updated folder (often a file in use by a running game) is worse than the old version
+            Undo-ArchiveContent $journal
+            throw "Couldn't update $dest (is the app running?): $($_.Exception.Message) Files already replaced were put back."
         }
         if (Test-Path -LiteralPath $backupRoot) { Write-Verbose "Replaced files were backed up to $backupRoot" }
 
