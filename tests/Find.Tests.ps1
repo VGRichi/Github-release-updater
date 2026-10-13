@@ -33,6 +33,19 @@ Describe 'Finding installed GitHub apps' {
         }
     }
 
+    Context 'Get-ProgramBaseName' {
+        It 'turns "<Name>" into "<Expected>"' -TestCases @(
+            @{ Name = 'PhotoCraft 1.2.3 (x64)'; Expected = 'PhotoCraft (x64)' }
+            @{ Name = '7-Zip 23.01 (x64)'; Expected = '7-Zip (x64)' }
+            @{ Name = 'Python 3.12.1 (64-bit)'; Expected = 'Python (64-bit)' }
+            @{ Name = 'App v2.0-beta1'; Expected = 'App' }
+            @{ Name = 'Notepad++ (64-bit x64)'; Expected = 'Notepad++ (64-bit x64)' }
+            @{ Name = 'PhotoCraft'; Expected = 'PhotoCraft' }
+        ) {
+            InModuleScope Reforge -Parameters @{ N = $Name } { Get-ProgramBaseName $N } | Should -Be $Expected
+        }
+    }
+
     Context 'Find-ReforgeApp' {
         BeforeEach {
             $config = New-TestConfigPath
@@ -53,6 +66,13 @@ Describe 'Finding installed GitHub apps' {
             $found[0].Name | Should -Be 'PhotoCraft'
             $found[0].Version | Should -Be '1.0.0'
             $found[0].PSObject.TypeNames | Should -Contain 'Reforge.Candidate'
+        }
+
+        It 'suggests the name without its version number' {
+            Mock -ModuleName Reforge Get-InstalledProgram {
+                [pscustomobject]@{ DisplayName = 'PhotoCraft 1.0.0 (x64)'; DisplayVersion = '1.0.0'; URLInfoAbout = 'https://github.com/storytold/photocraft' }
+            }
+            (Find-ReforgeApp -ConfigPath $config).Name | Should -Be 'PhotoCraft (x64)'
         }
 
         It 'leaves out apps already tracked' {

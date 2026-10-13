@@ -181,6 +181,20 @@ function Get-InstalledProgram {
         Where-Object { $_.DisplayName -and -not $_.SystemComponent }
 }
 
+function Get-ProgramBaseName([string]$Name) {
+    # "PhotoCraft 1.2.3 (x64)" -> "PhotoCraft (x64)": installed names often include the version,
+    # which changes with every update
+    (($Name -replace '(?i)(?<![\w.])v?\d+(?:\.\d+)+[\w.+-]*', '') -replace '\s{2,}', ' ').Trim()
+}
+
+function Find-InstalledProgram($Programs, [string]$Name) {
+    # The name as part of the installed name, or else the same name once version numbers are left out
+    $found = $Programs | Where-Object DisplayName -like "*$Name*" | Select-Object -First 1
+    if ($found) { return $found }
+    $base = Get-ProgramBaseName $Name
+    if ($base) { $Programs | Where-Object { (Get-ProgramBaseName $_.DisplayName) -eq $base } | Select-Object -First 1 }
+}
+
 function Get-ArchPattern {
     # How release file names spell this PC's architecture, and the ones it can't use
     if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
@@ -616,7 +630,7 @@ function Find-ReforgeApp {
         $seen[$repo] = $true
         [pscustomobject]@{
             PSTypeName = 'Reforge.Candidate'
-            Name       = $program.DisplayName
+            Name       = Get-ProgramBaseName $program.DisplayName   # stays valid after the version changes
             Repository = $repo
             Version    = $program.DisplayVersion
         }
@@ -667,7 +681,7 @@ function Update-ReforgeApp {
                 $program = $null
                 if (-not $isArchive) {
                     if ($null -eq $programs) { $programs = @(Get-InstalledProgram) }
-                    $program = $programs | Where-Object DisplayName -like "*$($app.Name)*" | Select-Object -First 1
+                    $program = Find-InstalledProgram $programs $app.Name
                 }
 
                 if (-not $isArchive -and -not $program) {

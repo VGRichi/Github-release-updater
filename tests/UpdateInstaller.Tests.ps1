@@ -123,7 +123,7 @@ Describe 'Updating installer apps' {
             (Update-ReforgeApp -ConfigPath $config).Status | Should -Be 'Updated'
         }
 
-        It 'still finds the app after an update changes a version number in its name' -Tag KnownBug {
+        It 'still finds the app after an update changes a version number in its name' {
             # Find-ReforgeApp | Add-ReforgeApp stores the full DisplayName, which often contains the version
             Write-TestAppList $config @([pscustomobject]@{ Name = 'PhotoCraft 1.0.0 (x64)'; Repository = 'storytold/photocraft' })
             $installed = New-TestProgram 'PhotoCraft 1.1.0 (x64)' '1.1.0'
