@@ -616,7 +616,8 @@ function Update-ReforgeApp {
             Write-Warning 'No apps in the list yet. Add one with Add-ReforgeApp, or find installed ones with Find-ReforgeApp.'
             return
         }
-        $targets = if ($requested.Count) { @($apps | Where-Object { $app = $_; $requested | Where-Object { $app.Name -like $_ } }) } else { $apps }
+        # @() keeps a single app an array; Windows PowerShell has no .Count on a lone object
+        $targets = @(if ($requested.Count) { $apps | Where-Object { $app = $_; $requested | Where-Object { $app.Name -like $_ } } } else { $apps })
         foreach ($n in $requested) {
             if (-not ($apps | Where-Object { $_.Name -like $n })) { Write-Error "No app named '$n' in the list." }
         }
