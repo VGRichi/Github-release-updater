@@ -149,7 +149,7 @@ Reforge is the new name of GitHubAppUpdater (v1 and v2). Your app list moves ove
 2. Update `ModuleVersion` in `Reforge/Reforge.psd1`, then commit and push.
 3. On GitHub, create a release with a matching tag (`v2.0.1` for version `2.0.1`).
 4. A GitHub Action attaches `Reforge.zip` to the release, and publishes to the PowerShell Gallery if a repository secret named `PSGALLERY_API_KEY` is set.
-5. Help lives in `docs/<language>/*.md`. After editing it, run `.\build\Build-Help.ps1` to rebuild the help, and commit both. To add a translation, copy `docs/en-US` to a folder like `docs/az-AZ`, translate the text (not the parameter names or code), and run the script.
+5. Help lives in `docs/<language>/*.md`. After editing it, run `.\build\build-help.ps1` to rebuild the help, and commit both. To add a translation, copy `docs/en-US` to a folder like `docs/az-AZ`, translate the text (not the parameter names or code), and run the script.
 
 ## License
 

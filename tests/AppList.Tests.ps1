@@ -24,6 +24,13 @@ Describe 'The app list' {
             $app.PSObject.Properties['Repo'] | Should -BeNullOrEmpty
         }
 
+        It 'merges the v1 "Destinations" field into "Destination"' {
+            Write-TestAppList $config @([pscustomobject]@{ Name = 'Tool'; Repository = 'o/tool'; Destination = 'C:\A'; Destinations = @('C:\B', 'C:\C') })
+            $app = InModuleScope Reforge -Parameters @{ P = $config } { Read-AppList $P }
+            @($app.Destination) | Should -Be @('C:\A', 'C:\B', 'C:\C')
+            $app.PSObject.Properties['Destinations'] | Should -BeNullOrEmpty
+        }
+
         It 'writes a JSON array even for one app, creating the folder' {
             $nested = Join-Path $TestDrive ('new-' + [guid]::NewGuid().ToString('N') + '\apps.json')
             InModuleScope Reforge -Parameters @{ P = $nested } { Save-AppList $P @([pscustomobject]@{ Name = 'One'; Repository = 'o/one' }) }

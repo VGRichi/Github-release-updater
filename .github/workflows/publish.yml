@@ -35,7 +35,7 @@ jobs:
 
       - name: Build help (Get-Help XML and Update-Help files)
         shell: pwsh
-        run: ./build/Build-Help.ps1 -Cab
+        run: ./build/build-help.ps1 -Cab
 
       - name: Attach module zip and Update-Help files to the release
         shell: pwsh
