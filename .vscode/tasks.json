@@ -5,28 +5,28 @@
       "label": "GitHub apps: check for updates",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-CheckOnly"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Update-GitHubApp -WhatIf"],
       "problemMatcher": []
     },
     {
-      "label": "GitHub apps: update all",
+      "label": "GitHub apps: update all (run VS Code as admin for installers)",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Update-GitHubApp"],
       "problemMatcher": []
     },
     {
-      "label": "GitHub apps: discover and update",
+      "label": "GitHub apps: list",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-Discover"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Get-GitHubApp"],
       "problemMatcher": []
     },
     {
-      "label": "GitHub apps: show list",
+      "label": "GitHub apps: find installed GitHub apps",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/Update-GitHubApps.ps1", "-List"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Find-GitHubApp"],
       "problemMatcher": []
     }
   ]

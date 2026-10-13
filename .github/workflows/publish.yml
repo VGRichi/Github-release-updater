@@ -1,0 +1,48 @@
+# When you publish a release on GitHub, this attaches GitHubAppUpdater.zip to it, and
+# publishes to the PowerShell Gallery if a repository secret named PSGALLERY_API_KEY is set
+# (Settings > Secrets and variables > Actions).
+name: Publish release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    env:
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Check the tag matches the module version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.release.tag_name }}'.TrimStart('v')
+          $manifest = Test-ModuleManifest ./GitHubAppUpdater/GitHubAppUpdater.psd1
+          if ($manifest.Version.ToString() -ne $tag) {
+            throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in GitHubAppUpdater.psd1"
+          }
+
+      - name: Build help (Get-Help XML and Update-Help files)
+        shell: pwsh
+        run: ./build/Build-Help.ps1 -Cab
+
+      - name: Attach module zip and Update-Help files to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Compress-Archive -Path ./GitHubAppUpdater -DestinationPath ./GitHubAppUpdater.zip
+          $helpFiles = (Get-ChildItem ./out/help -File).FullName
+          gh release upload '${{ github.event.release.tag_name }}' ./GitHubAppUpdater.zip $helpFiles --clobber
+
+      - name: Publish to PowerShell Gallery
+        if: ${{ env.PSGALLERY_API_KEY != '' }}
+        shell: pwsh
+        run: Publish-PSResource -Path ./GitHubAppUpdater -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
