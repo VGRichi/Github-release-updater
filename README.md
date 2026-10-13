@@ -85,11 +85,11 @@ Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' 
 |---|---|
 | `-Destination` | Folder(s) the files go into; several folders are allowed |
 | `-Subfolder` | Copy one folder from inside the archive (DXVK has `x64` and `x32`) |
-| `-Include` | Only copy matching files, e.g. `'*.dll'` |
+| `-Include` | Only copy matching files, by name or path, e.g. `'*.dll'` or `'bin\*'` |
 | `-Rename` | Rename files while copying |
-| `-Keep` | Files that are added if missing but never overwritten (your settings) |
+| `-Keep` | Files that are added if missing but never overwritten (your settings), by name or path, e.g. `'*.ini'` or `'config\*'` |
 
-Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
+Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`; the backups of the last 3 updates per tool are kept. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
 
 > **Online games:** DLL mods like DXVK or OptiScaler can trigger anti-cheat systems. Only use them where that's safe.
 
@@ -126,6 +126,8 @@ Installer apps install with admin rights and no installer window, so the module 
 
 `Update-ReforgeApp -WhatIf` shows which updates are unverified before anything runs.
 
+When nobody can answer a prompt (a scheduled task, or `pwsh -NonInteractive`), the answer is **No**: unverified downloads are skipped with a warning, and everything else updates normally. To update an app without a checksum unattended, trust it with `-AllowUnverified`.
+
 A checksum confirms you got **exactly the file on the release page**. It can't tell whether the release itself is trustworthy, for example if a developer's GitHub account were hacked. Only track apps from developers you trust.
 
 Thanks to the Reddit commenters whose feedback shaped the security rules and the move to a proper module.
@@ -138,10 +140,11 @@ Thanks to the Reddit commenters whose feedback shaped the security rules and the
 
 ## Publishing a new version (maintainers)
 
-1. Update `ModuleVersion` in `Reforge/Reforge.psd1`, then commit and push.
-2. On GitHub, create a release with a matching tag (`v2.0.1` for version `2.0.1`).
-3. A GitHub Action attaches `Reforge.zip` to the release, and publishes to the PowerShell Gallery if a repository secret named `PSGALLERY_API_KEY` is set.
-4. Help lives in `docs/<language>/*.md`. After editing it, run `.\build\Build-Help.ps1` to rebuild the help, and commit both. To add a translation, copy `docs/en-US` to a folder like `docs/az-AZ`, translate the text (not the parameter names or code), and run the script.
+1. Run the tests: `.\build\invoke-tests.ps1` (installs Pester 5 for the current user if needed). They also run on every push and pull request, and before publishing. Tests tagged `KnownBug` describe bugs that aren't fixed yet; `.\build\invoke-tests.ps1 -KnownBugs` runs only those.
+2. Update `ModuleVersion` in `Reforge/Reforge.psd1`, then commit and push.
+3. On GitHub, create a release with a matching tag (`v2.0.1` for version `2.0.1`).
+4. A GitHub Action attaches `Reforge.zip` to the release, and publishes to the PowerShell Gallery if a repository secret named `PSGALLERY_API_KEY` is set.
+5. Help lives in `docs/<language>/*.md`. After editing it, run `.\build\build-help.ps1` to rebuild the help, and commit both. To add a translation, copy `docs/en-US` to a folder like `docs/az-AZ`, translate the text (not the parameter names or code), and run the script.
 
 ## License
 

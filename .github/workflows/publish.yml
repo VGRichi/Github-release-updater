@@ -14,24 +14,31 @@ jobs:
   publish:
     runs-on: windows-latest
     env:
-      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+      # Passed through env, never pasted into scripts, so a tag name can't inject code
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+      HAS_PSGALLERY_KEY: ${{ secrets.PSGALLERY_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
 
       - name: Check the tag matches the module version
         shell: pwsh
         run: |
-          $tag = '${{ github.event.release.tag_name }}'.TrimStart('v')
+          $tag = $env:RELEASE_TAG.TrimStart('v')
           $manifest = Test-ModuleManifest ./Reforge/Reforge.psd1
           if ($manifest.Version.ToString() -ne $tag) {
             throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in Reforge.psd1"
           }
 
+      - name: Run tests
+        shell: pwsh
+        run: ./build/invoke-tests.ps1 -CI
+
       - name: Build help (Get-Help XML and Update-Help files)
         shell: pwsh
-        run: ./build/Build-Help.ps1 -Cab
+        run: ./build/build-help.ps1 -Cab
 
       - name: Attach module zip and Update-Help files to the release
         shell: pwsh
@@ -40,9 +47,11 @@ jobs:
         run: |
           Compress-Archive -Path ./Reforge -DestinationPath ./Reforge.zip
           $helpFiles = (Get-ChildItem ./out/help -File).FullName
-          gh release upload '${{ github.event.release.tag_name }}' ./Reforge.zip $helpFiles --clobber
+          gh release upload $env:RELEASE_TAG ./Reforge.zip $helpFiles --clobber --repo $env:GITHUB_REPOSITORY
 
       - name: Publish to PowerShell Gallery
-        if: ${{ env.PSGALLERY_API_KEY != '' }}
+        if: ${{ env.HAS_PSGALLERY_KEY == 'true' }}
         shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}   # only this step sees the key
         run: Publish-PSResource -Path ./Reforge -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY

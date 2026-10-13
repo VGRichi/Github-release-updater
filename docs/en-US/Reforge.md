@@ -12,17 +12,17 @@ Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.ex
 
 ## Reforge Cmdlets
 ### [Add-ReforgeApp](Add-ReforgeApp.md)
-Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.exe installers, and .zip/.7z/.tar.gz tools like DXVK. Verifies downloads against GitHub checksums and never installs an unverified file without asking.
+Starts tracking an app or tool from GitHub releases.
 
 ### [Find-ReforgeApp](Find-ReforgeApp.md)
-Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.exe installers, and .zip/.7z/.tar.gz tools like DXVK. Verifies downloads against GitHub checksums and never installs an unverified file without asking.
+Finds installed apps that come from GitHub.
 
 ### [Get-ReforgeApp](Get-ReforgeApp.md)
-Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.exe installers, and .zip/.7z/.tar.gz tools like DXVK. Verifies downloads against GitHub checksums and never installs an unverified file without asking.
+Lists the apps and tools you're tracking.
 
 ### [Remove-ReforgeApp](Remove-ReforgeApp.md)
-Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.exe installers, and .zip/.7z/.tar.gz tools like DXVK. Verifies downloads against GitHub checksums and never installs an unverified file without asking.
+Stops tracking an app or tool.
 
 ### [Update-ReforgeApp](Update-ReforgeApp.md)
-Keeps Windows apps and tools installed from GitHub releases up to date: .msi/.exe installers, and .zip/.7z/.tar.gz tools like DXVK. Verifies downloads against GitHub checksums and never installs an unverified file without asking.
+Updates your tracked apps and tools to their latest GitHub release.
 

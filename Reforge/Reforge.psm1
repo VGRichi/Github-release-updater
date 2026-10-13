@@ -7,7 +7,7 @@
 $script:AppDataRoot = if ($env:APPDATA) { $env:APPDATA } else { [Environment]::GetFolderPath('ApplicationData') }
 $script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'Reforge') 'apps.json'
 
-# One-time move of the app list from the old name (GitHubAppUpdater v1/v2)
+# LEGACY, remove in 4.0: one-time move of the app list from the old name (GitHubAppUpdater v1/v2)
 $legacyConfig = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
 if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -LiteralPath $legacyConfig)) {
     try {
@@ -18,6 +18,8 @@ if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -Lit
     }
 }
 $script:ListChanged = $false
+$script:BackupsToKeep = 3                      # per app; older backup folders are deleted
+$script:WorkRoot = [IO.Path]::GetTempPath()    # downloads are extracted in reforge-* folders here
 $script:UninstallPaths = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
     'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -33,19 +35,29 @@ function Read-AppList([string]$Path) {
     $raw = Get-Content -LiteralPath $Path -Raw
     if (-not ($raw -and $raw.Trim())) { return }
     foreach ($item in (ConvertFrom-Json -InputObject $raw)) {
-        # Lists from v1 used "Repo"; v2 uses "Repository"
+        # LEGACY (GitHubAppUpdater v1/v2 lists), remove in 4.0: "Repo" is now "Repository",
+        # and "Destinations" is merged into "Destination"
         if ($item.PSObject.Properties['Repo'] -and -not $item.PSObject.Properties['Repository']) {
             $item | Add-Member -NotePropertyName Repository -NotePropertyValue $item.Repo
             $item.PSObject.Properties.Remove('Repo')
+        }
+        if ($item.PSObject.Properties['Destinations']) {
+            $item | Add-Member -NotePropertyName Destination -NotePropertyValue @(@($item.Destination) + @($item.Destinations) | Where-Object { $_ }) -Force
+            $item.PSObject.Properties.Remove('Destinations')
         }
         $item
     }
 }
 
 function Save-AppList([string]$Path, $Items) {
+    # Write a temp file and swap it in, so a crash or full disk never leaves a half-written list
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $dir = Split-Path -Parent $Path
-    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -WhatIf:$false | Out-Null }
-    ConvertTo-Json -InputObject @($Items) -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8 -WhatIf:$false
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -WhatIf:$false | Out-Null }
+    $temp = "$Path.tmp"
+    ConvertTo-Json -InputObject @($Items) -Depth 5 | Set-Content -LiteralPath $temp -Encoding utf8 -WhatIf:$false
+    if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temp, $Path, [NullString]::Value) }   # no backup file
+    else { [IO.File]::Move($temp, $Path) }
 }
 
 function Set-AppField($App, [string]$Field, $Value) {
@@ -54,7 +66,7 @@ function Set-AppField($App, [string]$Field, $Value) {
 }
 
 function Get-AppDestination($App) {
-    @(@($App.Destination) + @($App.Destinations) | Where-Object { $_ })
+    @($App.Destination | Where-Object { $_ })
 }
 
 function ConvertTo-AppView($App) {
@@ -92,9 +104,16 @@ function Get-LatestRelease([string]$Repository, [bool]$Prerelease, [hashtable]$H
 }
 
 function New-WorkFolder {
-    $path = Join-Path ([IO.Path]::GetTempPath()) ('ghupd-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $path = Join-Path $script:WorkRoot ('reforge-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path $path -WhatIf:$false | Out-Null
     $path
+}
+
+function Remove-StaleWorkFolder {
+    # Work folders are deleted after each update; this catches ones left by a crashed or killed run
+    Get-ChildItem -LiteralPath $script:WorkRoot -Directory -Filter 'reforge-*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^reforge-[0-9a-f]{8}$' -and $_.LastWriteTime -lt (Get-Date).AddDays(-1) } |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }
 
 function Save-ReleaseAsset($Asset, [string]$Folder) {
@@ -140,8 +159,16 @@ function Test-IsAdmin {
 # ============================================================================
 
 function Read-Choice([string]$Caption, [string]$Message, [string[]]$Labels, [int]$Default) {
+    # With nobody to answer (pwsh -NonInteractive, a scheduled task, a service), use the default.
+    # Every prompt in this module defaults to the safe answer.
     $choices = [System.Management.Automation.Host.ChoiceDescription[]]@($Labels | ForEach-Object { [System.Management.Automation.Host.ChoiceDescription]::new($_) })
-    $Host.UI.PromptForChoice($Caption, $Message, $choices, $Default)
+    try {
+        if (-not [Environment]::UserInteractive) { throw [InvalidOperationException]::new('No interactive session.') }
+        $Host.UI.PromptForChoice($Caption, $Message, $choices, $Default)
+    } catch [InvalidOperationException], [System.Management.Automation.Host.HostException], [IO.IOException] {
+        Write-Warning "Can't ask here: $Message Answering '$($Labels[$Default] -replace '&')'."
+        $Default
+    }
 }
 
 function Get-VerificationNote($App, $Asset) {
@@ -181,23 +208,43 @@ function Get-InstalledProgram {
         Where-Object { $_.DisplayName -and -not $_.SystemComponent }
 }
 
+function Get-ProgramBaseName([string]$Name) {
+    # "PhotoCraft 1.2.3 (x64)" -> "PhotoCraft (x64)": installed names often include the version,
+    # which changes with every update
+    (($Name -replace '(?i)(?<![\w.])v?\d+(?:\.\d+)+[\w.+-]*', '') -replace '\s{2,}', ' ').Trim()
+}
+
+function Find-InstalledProgram($Programs, [string]$Name) {
+    # The name as part of the installed name, or else the same name once version numbers are left out
+    $found = $Programs | Where-Object DisplayName -like "*$Name*" | Select-Object -First 1
+    if ($found) { return $found }
+    $base = Get-ProgramBaseName $Name
+    if ($base) { $Programs | Where-Object { (Get-ProgramBaseName $_.DisplayName) -eq $base } | Select-Object -First 1 }
+}
+
+function Get-ArchPattern {
+    # How release file names spell this PC's architecture, and the ones it can't use
+    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
+        @{ Mine = '(?i)arm64|aarch64'; Other = '(?i)x64|amd64|x86_64|win64|ia32|i386|(?<!_)x86' }
+    } else {
+        @{ Mine = '(?i)x64|amd64|x86_64|win64'; Other = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit' }
+    }
+}
+
+function Test-NameHasWord([string]$Name, [string[]]$Word) {
+    # Not inside a longer word, so "emacs" doesn't count as "mac" (but "linux64" counts as "linux")
+    $Name -match ('(?i)(?<![a-z])(' + ($Word -join '|') + ')(?![a-z])')
+}
+
 function Select-InstallerAsset($Release, [string]$Pattern, [bool]$WantMsi) {
     if ($Pattern) { return $Release.assets | Where-Object name -like $Pattern | Select-Object -First 1 }
-
-    if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        $myArch    = '(?i)arm64|aarch64'
-        $otherArch = '(?i)x64|amd64|x86_64|win64|ia32|i386|(?<!_)x86'
-    } else {
-        $myArch    = '(?i)x64|amd64|x86_64|win64'
-        $otherArch = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit'
-    }
-
+    $arch = Get-ArchPattern
     $Release.assets |
-        Where-Object { $_.name -match '(?i)\.(msi|exe)$' -and $_.name -notmatch '(?i)portable|mac|darwin|linux' } |
+        Where-Object { $_.name -match '(?i)\.(msi|exe)$' -and -not (Test-NameHasWord $_.name 'portable', 'mac', 'macos', 'osx', 'darwin', 'linux') } |
         ForEach-Object {
             $score = 0
-            if ($_.name -match $myArch) { $score += 10 }
-            elseif ($_.name -match $otherArch) { $score -= 100 }
+            if ($_.name -match $arch.Mine) { $score += 10 }
+            elseif ($_.name -match $arch.Other) { $score -= 100 }
             if (($_.name -match '(?i)\.msi$') -eq $WantMsi) { $score += 20 }   # same installer type as what's installed
             if ($_.name -match '(?i)setup|install') { $score += 2 }
             [pscustomobject]@{ Asset = $_; Score = $score }
@@ -207,28 +254,34 @@ function Select-InstallerAsset($Release, [string]$Pattern, [bool]$WantMsi) {
         Select-Object -First 1 -ExpandProperty Asset
 }
 
-function Invoke-Installer([string]$File, [string]$SilentArgs) {
-    if ($File -match '(?i)\.msi$') {
-        $p = Start-Process -FilePath msiexec.exe -ArgumentList "/i `"$File`" /qn /norestart" -Wait -PassThru
-        return $p.ExitCode
-    }
-    if (-not $SilentArgs) {
-        # Detect common installer types from the first few MB of the file
-        $fs  = [IO.File]::OpenRead($File)
+function Get-InstallerSilentArg([string]$File) {
+    # Detect common installer types from the first few MB of the file
+    $fs = [IO.File]::OpenRead($File)
+    try {
         $buf = New-Object byte[] ([Math]::Min(4MB, $fs.Length))
         [void]$fs.Read($buf, 0, $buf.Length)
-        $fs.Close()
-        $text = [Text.Encoding]::ASCII.GetString($buf)
-        if     ($text -match 'Inno Setup') { $SilentArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
-        elseif ($text -match 'Nullsoft')   { $SilentArgs = '/S' }
-    }
-    if ($SilentArgs) {
-        $p = Start-Process -FilePath $File -ArgumentList $SilentArgs -Wait -PassThru
-    } else {
-        Write-Warning "Unknown installer type for $([IO.Path]::GetFileName($File)); opening it normally."
-        $p = Start-Process -FilePath $File -Wait -PassThru
-    }
+    } finally { $fs.Dispose() }
+    $text = [Text.Encoding]::ASCII.GetString($buf)
+    if     ($text -match 'Inno Setup') { '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
+    elseif ($text -match 'Nullsoft')   { '/S' }
+}
+
+function Start-InstallerProcess([string]$FilePath, [string]$ArgumentList) {
+    # Waits for the installer only. Start-Process -Wait also waits for everything it starts, so an
+    # installer that opens the app when it's done would block until you close the app.
+    $params = @{ FilePath = $FilePath; PassThru = $true }
+    if ($ArgumentList) { $params.ArgumentList = $ArgumentList }
+    $p = Start-Process @params
+    $null = $p.Handle   # without an open handle, Windows PowerShell can lose the exit code
+    $p.WaitForExit()
     $p.ExitCode
+}
+
+function Invoke-Installer([string]$File, [string]$SilentArgs) {
+    if ($File -match '(?i)\.msi$') { return Start-InstallerProcess msiexec.exe "/i `"$File`" /qn /norestart" }
+    if (-not $SilentArgs) { $SilentArgs = Get-InstallerSilentArg $File }
+    if (-not $SilentArgs) { Write-Warning "Unknown installer type for $([IO.Path]::GetFileName($File)); opening it normally." }
+    Start-InstallerProcess $File $SilentArgs
 }
 
 function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
@@ -245,7 +298,8 @@ function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
     $Result.Status = 'UpdateAvailable'
     $Result.Note = Get-VerificationNote $App $asset
     if (-not $Cmdlet.ShouldProcess("$($App.Name) $($Release.tag_name)", "Install $($asset.name)")) { return }
-    if (-not (Test-PerUserInstall $Program) -and -not (Test-IsAdmin)) { $Result.Status = 'NeedsAdmin'; $Result.Note = 'Installed for all users; run PowerShell as administrator'; return }    if (-not (Approve-Install $App $asset)) { $Result.Status = 'Skipped'; $Result.Note = 'Unverified download declined'; return }
+    if (-not (Test-PerUserInstall $Program) -and -not (Test-IsAdmin)) { $Result.Status = 'NeedsAdmin'; $Result.Note = 'Installed for all users; run PowerShell as administrator'; return }
+    if (-not (Approve-Install $App $asset)) { $Result.Status = 'Skipped'; $Result.Note = 'Unverified download declined'; return }
 
     $work = New-WorkFolder
     try {
@@ -270,18 +324,20 @@ function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
 
 function Select-ArchiveAsset($Release, [string]$Pattern) {
     if ($Pattern) { return $Release.assets | Where-Object name -like $Pattern | Select-Object -First 1 }
-    $myArch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { '(?i)arm64|aarch64' } else { '(?i)x64|amd64|x86_64|win64' }
+    $arch = Get-ArchPattern
     $Release.assets |
         Where-Object {
             $_.name -match '(?i)\.(zip|7z|tar\.gz|tgz|tar\.xz)$' -and
-            $_.name -notmatch '(?i)source|src|debug|pdb|symbols|linux|mac|darwin|native|steamrt'
+            -not (Test-NameHasWord $_.name 'source', 'src', 'debug', 'pdb', 'symbols', 'linux', 'mac', 'macos', 'osx', 'darwin', 'native', 'steamrt')
         } |
         ForEach-Object {
             $score = 0
-            if ($_.name -match $myArch) { $score += 10 }
+            if ($_.name -match $arch.Mine) { $score += 10 }
+            elseif ($_.name -match $arch.Other) { $score -= 100 }
             if ($_.name -match '(?i)win') { $score += 5 }
             [pscustomobject]@{ Asset = $_; Score = $score }
         } |
+        Where-Object Score -ge 0 |
         Sort-Object Score -Descending |
         Select-Object -First 1 -ExpandProperty Asset
 }
@@ -332,7 +388,8 @@ function Get-ArchiveContentRoot([string]$Extracted, [string]$Subfolder) {
     throw "Folder '$Subfolder' was not found inside the archive."
 }
 
-function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [string]$BackupDir) {
+function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [string]$BackupDir, [System.Collections.Generic.List[object]]$Journal) {
+    # Every replaced or added file goes into $Journal, so Undo-ArchiveContent can put things back
     $ProgressPreference = 'SilentlyContinue'   # hide per-file progress; the main progress bar stays
     $include = @($App.Include) | Where-Object { $_ }
     $keep    = @($App.Keep)    | Where-Object { $_ }
@@ -353,18 +410,42 @@ function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [strin
         $relTarget = if ($relDir) { Join-Path $relDir $leaf } else { $leaf }
         $target    = Join-Path $Destination $relTarget
 
+        $backup = $null
         if (Test-Path -LiteralPath $target) {
             # Files marked "Keep" (like your settings) are only added if missing, never overwritten
-            if ($keep | Where-Object { $leaf -like $_ -or $file.Name -like $_ }) { continue }
+            if ($keep | Where-Object { $leaf -like $_ -or $file.Name -like $_ -or $relTarget -like $_ -or $rel -like $_ }) { continue }
             $backup = Join-Path $BackupDir $relTarget
             New-Item -ItemType Directory -Path (Split-Path -Parent $backup) -Force -WhatIf:$false | Out-Null
-            Copy-Item -LiteralPath $target -Destination $backup -Force -WhatIf:$false
+            Copy-Item -LiteralPath $target -Destination $backup -Force -WhatIf:$false -ErrorAction Stop
         }
         New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force -WhatIf:$false | Out-Null
-        Copy-Item -LiteralPath $file.FullName -Destination $target -Force -WhatIf:$false
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force -WhatIf:$false -ErrorAction Stop
+        if ($null -ne $Journal) { $Journal.Add([pscustomobject]@{ Target = $target; Backup = $backup }) }
         $copied++
     }
     $copied
+}
+
+function Undo-ArchiveContent([System.Collections.Generic.List[object]]$Journal) {
+    # Newest first: restore replaced files from their backup, delete added ones
+    for ($i = $Journal.Count - 1; $i -ge 0; $i--) {
+        $entry = $Journal[$i]
+        try {
+            if ($entry.Backup) { Copy-Item -LiteralPath $entry.Backup -Destination $entry.Target -Force -WhatIf:$false -ErrorAction Stop }
+            else { Remove-Item -LiteralPath $entry.Target -Force -WhatIf:$false -ErrorAction Stop }
+        } catch {
+            Write-Warning "Couldn't put back $($entry.Target): $($_.Exception.Message)"
+        }
+    }
+}
+
+function Remove-OldBackup([string]$AppBackupDir, [int]$Keep) {
+    # Backup folders are named by date and time, so sorting by name puts the newest first
+    Get-ChildItem -LiteralPath $AppBackupDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object Name -match '^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d$' |
+        Sort-Object Name -Descending |
+        Select-Object -Skip $Keep |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
 }
 
 function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$ConfigPath) {
@@ -393,14 +474,23 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
 
         $safeName = $App.Name -replace '[\\/:*?"<>|]', '_'
         $stamp    = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-        $backupRoot = Join-Path (Join-Path (Join-Path (Split-Path -Parent $ConfigPath) 'backups') $safeName) $stamp
+        $appBackups = Join-Path (Join-Path (Split-Path -Parent $ConfigPath) 'backups') $safeName
+        $backupRoot = Join-Path $appBackups $stamp
+        $journal = [System.Collections.Generic.List[object]]::new()
         $i = 0
-        foreach ($dest in $destinations) {
-            $i++
-            $n = Copy-ArchiveContent $App $source $dest (Join-Path $backupRoot $i)
-            Write-Verbose "Copied $n file(s) to $dest"
+        try {
+            foreach ($dest in $destinations) {
+                $i++
+                $n = Copy-ArchiveContent $App $source $dest (Join-Path $backupRoot $i) $journal
+                Write-Verbose "Copied $n file(s) to $dest"
+            }
+        } catch {
+            # All or nothing: a half-updated folder (often a file in use by a running game) is worse than the old version
+            Undo-ArchiveContent $journal
+            throw "Couldn't update $dest (is the app running?): $($_.Exception.Message) Files already replaced were put back."
         }
         if (Test-Path -LiteralPath $backupRoot) { Write-Verbose "Replaced files were backed up to $backupRoot" }
+        Remove-OldBackup $appBackups $script:BackupsToKeep
 
         Set-AppField $App 'InstalledVersion' $Release.tag_name
         $Result.Installed = $Release.tag_name
@@ -435,7 +525,7 @@ function Add-ReforgeApp {
     [OutputType('Reforge.App')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
-        [Alias('Repo')]
+        [Alias('Repo')]   # LEGACY: GitHubAppUpdater v1 lists and CSVs used Repo
         [string]$Repository,
 
         [Parameter(Position = 1, ValueFromPipelineByPropertyName)]
@@ -585,7 +675,7 @@ function Find-ReforgeApp {
         $seen[$repo] = $true
         [pscustomobject]@{
             PSTypeName = 'Reforge.Candidate'
-            Name       = $program.DisplayName
+            Name       = Get-ProgramBaseName $program.DisplayName   # stays valid after the version changes
             Repository = $repo
             Version    = $program.DisplayVersion
         }
@@ -616,11 +706,13 @@ function Update-ReforgeApp {
             Write-Warning 'No apps in the list yet. Add one with Add-ReforgeApp, or find installed ones with Find-ReforgeApp.'
             return
         }
-        $targets = if ($requested.Count) { @($apps | Where-Object { $app = $_; $requested | Where-Object { $app.Name -like $_ } }) } else { $apps }
+        # @() keeps a single app an array; Windows PowerShell has no .Count on a lone object
+        $targets = @(if ($requested.Count) { $apps | Where-Object { $app = $_; $requested | Where-Object { $app.Name -like $_ } } } else { $apps })
         foreach ($n in $requested) {
             if (-not ($apps | Where-Object { $_.Name -like $n })) { Write-Error "No app named '$n' in the list." }
         }
 
+        if (-not $WhatIfPreference) { Remove-StaleWorkFolder }
         $headers = Get-RequestHeader $Token
         $programs = $null
         $script:ListChanged = $false
@@ -628,14 +720,14 @@ function Update-ReforgeApp {
 
         foreach ($app in $targets) {
             $i++
-            Write-Progress -Activity 'Updating GitHub apps' -Status $app.Name -PercentComplete (($i - 1) / $targets.Count * 100)
+            Write-Progress -Activity 'Updating Reforge apps' -Status $app.Name -PercentComplete (($i - 1) / $targets.Count * 100)
             $result = [ordered]@{ Name = $app.Name; Repository = $app.Repository; Installed = $null; Latest = $null; Status = $null; Note = $null }
             try {
                 $isArchive = $app.Type -eq 'archive'
                 $program = $null
                 if (-not $isArchive) {
                     if ($null -eq $programs) { $programs = @(Get-InstalledProgram) }
-                    $program = $programs | Where-Object DisplayName -like "*$($app.Name)*" | Select-Object -First 1
+                    $program = Find-InstalledProgram $programs $app.Name
                 }
 
                 if (-not $isArchive -and -not $program) {
@@ -657,12 +749,14 @@ function Update-ReforgeApp {
                 $result.Note = $_.Exception.Message
                 Write-Warning "$($app.Name): $($_.Exception.Message)"
             }
-            if ($script:ListChanged) { Save-AppList $ConfigPath $apps; $script:ListChanged = $false }
+            # -WhatIf changes nothing on disk, not even what it learned (like HadDigest)
+            if ($script:ListChanged -and -not $WhatIfPreference) { Save-AppList $ConfigPath $apps }
+            $script:ListChanged = $false
             $out = [pscustomobject]$result
             $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
             $out
         }
-        Write-Progress -Activity 'Updating GitHub apps' -Completed
+        Write-Progress -Activity 'Updating Reforge apps' -Completed
     }
 }
 
