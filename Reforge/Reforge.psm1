@@ -225,9 +225,9 @@ function Find-InstalledProgram($Programs, [string]$Name) {
 function Get-ArchPattern {
     # How release file names spell this PC's architecture, and the ones it can't use
     if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') {
-        @{ Mine = '(?i)arm64|aarch64'; Other = '(?i)x64|amd64|x86_64|win64|ia32|i386|(?<!_)x86' }
+        @{ Mine = '(?i)arm64|aarch64'; Other = '(?i)x64|amd64|x86_64|win64|64-?bit|ia32|i386|(?<!_)x86' }
     } else {
-        @{ Mine = '(?i)x64|amd64|x86_64|win64'; Other = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit' }
+        @{ Mine = '(?i)x64|amd64|x86_64|win64|64-?bit'; Other = '(?i)arm64|aarch64|ia32|i386|(?<!_)x86(?!_64)|32-?bit' }
     }
 }
 
@@ -240,7 +240,11 @@ function Select-InstallerAsset($Release, [string]$Pattern, [bool]$WantMsi) {
     if ($Pattern) { return $Release.assets | Where-Object name -like $Pattern | Select-Object -First 1 }
     $arch = Get-ArchPattern
     $Release.assets |
-        Where-Object { $_.name -match '(?i)\.(msi|exe)$' -and -not (Test-NameHasWord $_.name 'portable', 'mac', 'macos', 'osx', 'darwin', 'linux') } |
+        Where-Object {
+            $_.name -match '(?i)\.(msi|exe)$' -and
+            $_.name -notmatch '(?i)portable|\.(7z|zip)\.exe$' -and   # portable builds and self-extracting archives aren't installers
+            -not (Test-NameHasWord $_.name 'mac', 'macos', 'osx', 'darwin', 'linux')
+        } |
         ForEach-Object {
             $score = 0
             if ($_.name -match $arch.Mine) { $score += 10 }
