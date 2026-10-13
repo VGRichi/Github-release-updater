@@ -1,11 +1,11 @@
 ---
-external help file: GitHubAppUpdater-help.xml
-Module Name: GitHubAppUpdater
-online version: https://github.com/VGRichi/github-app-updater/blob/main/docs/en-US/Find-GitHubApp.md
+external help file: Reforge-help.xml
+Module Name: Reforge
+online version: https://github.com/VGRichi/Reforge/blob/main/docs/en-US/Find-ReforgeApp.md
 schema: 2.0.0
 ---
 
-# Find-GitHubApp
+# Find-ReforgeApp
 
 ## SYNOPSIS
 Finds installed apps that come from GitHub.
@@ -13,37 +13,37 @@ Finds installed apps that come from GitHub.
 ## SYNTAX
 
 ```
-Find-GitHubApp [[-ConfigPath] <String>] [<CommonParameters>]
+Find-ReforgeApp [[-ConfigPath] <String>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
 Looks through Settings \> Apps \> Installed apps for apps whose uninstall information links to
 a GitHub repository.
 Apps already in your list and apps that winget can update are left out.
-Nothing is added; pipe the results to Add-GitHubApp to track them.
+Nothing is added; pipe the results to Add-ReforgeApp to track them.
 
 Apps that don't include a GitHub link in their uninstall information can't be found this way;
-add those with Add-GitHubApp.
+add those with Add-ReforgeApp.
 
 ## EXAMPLES
 
 ### EXAMPLE 1
 ```
-Find-GitHubApp
+Find-ReforgeApp
 ```
 
 Shows installed apps that link to GitHub and aren't tracked yet.
 
 ### EXAMPLE 2
 ```
-Find-GitHubApp | Add-GitHubApp
+Find-ReforgeApp | Add-ReforgeApp
 ```
 
 Tracks all of them.
 
 ### EXAMPLE 3
 ```
-Find-GitHubApp | Out-GridView -PassThru | Add-GitHubApp
+Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp
 ```
 
 Lets you pick which ones to track in a window.
@@ -72,7 +72,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## OUTPUTS
 
-### GitHubAppUpdater.Candidate
+### Reforge.Candidate
 ## NOTES
 
 ## RELATED LINKS

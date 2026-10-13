@@ -1,11 +1,11 @@
 ---
-external help file: GitHubAppUpdater-help.xml
-Module Name: GitHubAppUpdater
-online version: https://github.com/VGRichi/github-app-updater/blob/main/docs/en-US/Remove-GitHubApp.md
+external help file: Reforge-help.xml
+Module Name: Reforge
+online version: https://github.com/VGRichi/Reforge/blob/main/docs/en-US/Remove-ReforgeApp.md
 schema: 2.0.0
 ---
 
-# Remove-GitHubApp
+# Remove-ReforgeApp
 
 ## SYNOPSIS
 Stops tracking an app or tool.
@@ -13,27 +13,27 @@ Stops tracking an app or tool.
 ## SYNTAX
 
 ```
-Remove-GitHubApp [-Name] <String[]> [-ConfigPath <String>] [-WhatIf]
+Remove-ReforgeApp [-Name] <String[]> [-ConfigPath <String>] [-WhatIf]
  [-Confirm] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
 Removes apps from your list.
 This does not uninstall the app or delete any files; it only
-means Update-GitHubApp won't update it anymore.
+means Update-ReforgeApp won't update it anymore.
 
 ## EXAMPLES
 
 ### EXAMPLE 1
 ```
-Remove-GitHubApp -Name PhotoCraft
+Remove-ReforgeApp -Name PhotoCraft
 ```
 
 Stops tracking PhotoCraft.
 
 ### EXAMPLE 2
 ```
-Get-GitHubApp -Name 'DXVK*' | Remove-GitHubApp -WhatIf
+Get-ReforgeApp -Name 'DXVK*' | Remove-ReforgeApp -WhatIf
 ```
 
 Shows which DXVK entries would be removed, without removing them.

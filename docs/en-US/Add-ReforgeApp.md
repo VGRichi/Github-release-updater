@@ -1,11 +1,11 @@
 ---
-external help file: GitHubAppUpdater-help.xml
-Module Name: GitHubAppUpdater
-online version: https://github.com/VGRichi/github-app-updater/blob/main/docs/en-US/Add-GitHubApp.md
+external help file: Reforge-help.xml
+Module Name: Reforge
+online version: https://github.com/VGRichi/Reforge/blob/main/docs/en-US/Add-ReforgeApp.md
 schema: 2.0.0
 ---
 
-# Add-GitHubApp
+# Add-ReforgeApp
 
 ## SYNOPSIS
 Starts tracking an app or tool from GitHub releases.
@@ -13,14 +13,14 @@ Starts tracking an app or tool from GitHub releases.
 ## SYNTAX
 
 ```
-Add-GitHubApp [-Repository] <String> [[-Name] <String>] [-Destination <String[]>] [-Subfolder <String>]
+Add-ReforgeApp [-Repository] <String> [[-Name] <String>] [-Destination <String[]>] [-Subfolder <String>]
  [-Pattern <String>] [-Include <String[]>] [-Keep <String[]>] [-Rename <Object>] [-SilentArgs <String>]
  [-Prerelease] [-AllowUnverified] [-Force] [-PassThru] [-ConfigPath <String>]
  [<CommonParameters>]
 ```
 
 ## DESCRIPTION
-Adds an app to your list so Update-GitHubApp keeps it up to date.
+Adds an app to your list so Update-ReforgeApp keeps it up to date.
 
 Installer apps (.msi/.exe): give the repository and the app's name as it appears in
 Settings \> Apps \> Installed apps (a partial name is fine).
@@ -30,27 +30,27 @@ the files are extracted into.
 Without -Destination, the app is treated as an installer app.
 
 Accepts pipeline input by property name, so you can pipe objects, CSV rows or the output of
-Find-GitHubApp into it, or splat a hashtable.
+Find-ReforgeApp into it, or splat a hashtable.
 
 ## EXAMPLES
 
 ### EXAMPLE 1
 ```
-Add-GitHubApp -Repository storytold/photocraft -Name PhotoCraft
+Add-ReforgeApp -Repository storytold/photocraft -Name PhotoCraft
 ```
 
 Tracks an app that was installed with an .msi or .exe.
 
 ### EXAMPLE 2
 ```
-Add-GitHubApp -Repository doitsujin/dxvk -Name 'DXVK (Witcher 3)' -Destination 'D:\Games\Witcher 3\bin\x64' -Subfolder x64
+Add-ReforgeApp -Repository doitsujin/dxvk -Name 'DXVK (Witcher 3)' -Destination 'D:\Games\Witcher 3\bin\x64' -Subfolder x64
 ```
 
 Tracks DXVK for one game, copying the archive's x64 folder into the game folder.
 
 ### EXAMPLE 3
 ```
-Add-GitHubApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' -Destination 'D:\Games\Cyberpunk 2077\bin\x64' -Rename @{ 'OptiScaler.dll' = 'dxgi.dll' } -Keep '*.ini'
+Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' -Destination 'D:\Games\Cyberpunk 2077\bin\x64' -Rename @{ 'OptiScaler.dll' = 'dxgi.dll' } -Keep '*.ini'
 ```
 
 Tracks OptiScaler, renaming its DLL and never overwriting your settings file.
@@ -58,24 +58,24 @@ Tracks OptiScaler, renaming its DLL and never overwriting your settings file.
 ### EXAMPLE 4
 ```
 $app = @{ Repository = 'storytold/pdfcraft'; Name = 'PdfCraft' }
-Add-GitHubApp @app
+Add-ReforgeApp @app
 ```
 
 Adds an app from a hashtable (splatting).
 
 ### EXAMPLE 5
 ```
-Import-Csv .\my-apps.csv | Add-GitHubApp
+Import-Csv .\my-apps.csv | Add-ReforgeApp
 ```
 
 Adds every row of a CSV file with Repository and Name columns.
 
 ### EXAMPLE 6
 ```
-Find-GitHubApp | Add-GitHubApp
+Find-ReforgeApp | Add-ReforgeApp
 ```
 
-Adds every installed app that Find-GitHubApp found.
+Adds every installed app that Find-ReforgeApp found.
 
 ## PARAMETERS
 
@@ -306,7 +306,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## OUTPUTS
 
-### GitHubAppUpdater.App
+### Reforge.App
 ## NOTES
 
 ## RELATED LINKS

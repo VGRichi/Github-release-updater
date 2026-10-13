@@ -1,4 +1,4 @@
-# When you publish a release on GitHub, this attaches GitHubAppUpdater.zip to it, and
+# When you publish a release on GitHub, this attaches Reforge.zip to it, and
 # publishes to the PowerShell Gallery if a repository secret named PSGALLERY_API_KEY is set
 # (Settings > Secrets and variables > Actions).
 name: Publish release
@@ -24,9 +24,9 @@ jobs:
         shell: pwsh
         run: |
           $tag = '${{ github.event.release.tag_name }}'.TrimStart('v')
-          $manifest = Test-ModuleManifest ./GitHubAppUpdater/GitHubAppUpdater.psd1
+          $manifest = Test-ModuleManifest ./Reforge/Reforge.psd1
           if ($manifest.Version.ToString() -ne $tag) {
-            throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in GitHubAppUpdater.psd1"
+            throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in Reforge.psd1"
           }
 
       - name: Build help (Get-Help XML and Update-Help files)
@@ -38,11 +38,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          Compress-Archive -Path ./GitHubAppUpdater -DestinationPath ./GitHubAppUpdater.zip
+          Compress-Archive -Path ./Reforge -DestinationPath ./Reforge.zip
           $helpFiles = (Get-ChildItem ./out/help -File).FullName
-          gh release upload '${{ github.event.release.tag_name }}' ./GitHubAppUpdater.zip $helpFiles --clobber
+          gh release upload '${{ github.event.release.tag_name }}' ./Reforge.zip $helpFiles --clobber
 
       - name: Publish to PowerShell Gallery
         if: ${{ env.PSGALLERY_API_KEY != '' }}
         shell: pwsh
-        run: Publish-PSResource -Path ./GitHubAppUpdater -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
+        run: Publish-PSResource -Path ./Reforge -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY

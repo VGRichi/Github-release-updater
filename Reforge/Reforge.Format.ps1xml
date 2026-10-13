@@ -2,8 +2,8 @@
 <Configuration>
   <ViewDefinitions>
     <View>
-      <Name>GitHubAppUpdater.App</Name>
-      <ViewSelectedBy><TypeName>GitHubAppUpdater.App</TypeName></ViewSelectedBy>
+      <Name>Reforge.App</Name>
+      <ViewSelectedBy><TypeName>Reforge.App</TypeName></ViewSelectedBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label></TableColumnHeader>
@@ -24,8 +24,8 @@
       </TableControl>
     </View>
     <View>
-      <Name>GitHubAppUpdater.Result</Name>
-      <ViewSelectedBy><TypeName>GitHubAppUpdater.Result</TypeName></ViewSelectedBy>
+      <Name>Reforge.Result</Name>
+      <ViewSelectedBy><TypeName>Reforge.Result</TypeName></ViewSelectedBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label></TableColumnHeader>
@@ -48,8 +48,8 @@
       </TableControl>
     </View>
     <View>
-      <Name>GitHubAppUpdater.Candidate</Name>
-      <ViewSelectedBy><TypeName>GitHubAppUpdater.Candidate</TypeName></ViewSelectedBy>
+      <Name>Reforge.Candidate</Name>
+      <ViewSelectedBy><TypeName>Reforge.Candidate</TypeName></ViewSelectedBy>
       <TableControl>
         <TableHeaders>
           <TableColumnHeader><Label>Name</Label></TableColumnHeader>

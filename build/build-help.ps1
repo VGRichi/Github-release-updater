@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Builds GitHubAppUpdater's help from the Markdown files in docs/.
+Builds Reforge's help from the Markdown files in docs/.
 
 .DESCRIPTION
 docs/<culture>/*.md (for example docs/en-US) is the source of the module's help.
 This script turns each culture folder into the XML help that Get-Help reads
-(GitHubAppUpdater/<culture>/GitHubAppUpdater-help.xml).
+(Reforge/<culture>/Reforge-help.xml).
 
 -Init is a one-time step: it creates docs/en-US from the comment-based help in the
 module, then removes those comment blocks from the code.
@@ -32,9 +32,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root      = Split-Path -Parent $PSScriptRoot
-$moduleDir = Join-Path $root 'GitHubAppUpdater'
+$moduleDir = Join-Path $root 'Reforge'
 $docsRoot  = Join-Path $root 'docs'
-$manifest  = Import-PowerShellDataFile (Join-Path $moduleDir 'GitHubAppUpdater.psd1')
+$manifest  = Import-PowerShellDataFile (Join-Path $moduleDir 'Reforge.psd1')
 $version   = $manifest.ModuleVersion
 $repoUrl   = $manifest.PrivateData.PSData.ProjectUri
 $platyVer  = '0.14.2'
@@ -50,7 +50,7 @@ if ($Init) {
     $enUS = Join-Path $docsRoot 'en-US'
     if (Test-Path $enUS) { throw 'docs/en-US already exists. -Init is a one-time step; edit the files in docs/ instead.' }
 
-    $psm1 = Join-Path $moduleDir 'GitHubAppUpdater.psm1'
+    $psm1 = Join-Path $moduleDir 'Reforge.psm1'
     $code = Get-Content $psm1 -Raw
     $helpBlock = '(?ms)^[ \t]*<#[ \t]*\r?\n[ \t]*\.SYNOPSIS.*?#>[ \t]*\r?\n'
     $blocks = [regex]::Matches($code, $helpBlock).Count
@@ -58,12 +58,12 @@ if ($Init) {
 
     Write-Host 'Creating docs/en-US from the comment-based help...'
     Import-Module $moduleDir -Force
-    New-MarkdownHelp -Module GitHubAppUpdater -OutputFolder $enUS -WithModulePage -AlphabeticParamsOrder `
+    New-MarkdownHelp -Module Reforge -OutputFolder $enUS -WithModulePage -AlphabeticParamsOrder `
         -Locale 'en-US' -HelpVersion $version -FwLink $manifest.HelpInfoURI -Force | Out-Null
 
     foreach ($file in Get-ChildItem $enUS -Filter '*.md') {
         $text = Get-Content $file.FullName -Raw
-        if ($file.BaseName -eq 'GitHubAppUpdater') {
+        if ($file.BaseName -eq 'Reforge') {
             $text = $text -replace '\{\{ ?Fill in the Description ?\}\}', $manifest.Description
         } else {
             # Lets Get-Help -Online open the page on GitHub
@@ -75,7 +75,7 @@ if ($Init) {
         Set-Content -LiteralPath $file.FullName -Value $text -Encoding utf8 -NoNewline
     }
 
-    Write-Host "Removing $blocks comment-based help blocks from GitHubAppUpdater.psm1..."
+    Write-Host "Removing $blocks comment-based help blocks from Reforge.psm1..."
     Set-Content -LiteralPath $psm1 -Value ([regex]::Replace($code, $helpBlock, '')) -Encoding utf8 -NoNewline
 }
 
@@ -86,7 +86,7 @@ if (-not $cultures) { throw 'No docs/<culture> folders found. Run with -Init fir
 foreach ($culture in $cultures) {
     $out = Join-Path $moduleDir $culture.Name
     New-ExternalHelp -Path $culture.FullName -OutputPath $out -Force | Out-Null
-    Write-Host "Built $($culture.Name) help -> GitHubAppUpdater/$($culture.Name)"
+    Write-Host "Built $($culture.Name) help -> Reforge/$($culture.Name)"
 
     $placeholders = Select-String -Path (Join-Path $culture.FullName '*.md') -Pattern '\{\{.*?\}\}'
     foreach ($p in $placeholders) {
@@ -107,8 +107,8 @@ if ($Cab) {
     try {
         foreach ($culture in $cultures) {
             # Stamp the landing page with this release's help version (on a copy, not the source)
-            $landing = Join-Path $temp "GitHubAppUpdater.$($culture.Name).md"
-            $text = Get-Content (Join-Path $culture.FullName 'GitHubAppUpdater.md') -Raw
+            $landing = Join-Path $temp "Reforge.$($culture.Name).md"
+            $text = Get-Content (Join-Path $culture.FullName 'Reforge.md') -Raw
             $text = $text -replace '(?m)^Help Version:.*$', "Help Version: $helpVersion"
             $text = $text -replace '(?m)^Download Help Link:.*$', "Download Help Link: $($manifest.HelpInfoURI)"
             Set-Content -LiteralPath $landing -Value $text -Encoding utf8 -NoNewline

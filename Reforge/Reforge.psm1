@@ -5,7 +5,18 @@
 # ============================================================================
 
 $script:AppDataRoot = if ($env:APPDATA) { $env:APPDATA } else { [Environment]::GetFolderPath('ApplicationData') }
-$script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
+$script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'Reforge') 'apps.json'
+
+# One-time move of the app list from the old name (GitHubAppUpdater v1/v2)
+$legacyConfig = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
+if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -LiteralPath $legacyConfig)) {
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $script:DefaultConfigPath) -Force | Out-Null
+        Copy-Item -LiteralPath $legacyConfig -Destination $script:DefaultConfigPath -ErrorAction Stop
+    } catch {
+        $script:DefaultConfigPath = $legacyConfig
+    }
+}
 $script:ListChanged = $false
 $script:UninstallPaths = @(
     'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -49,7 +60,7 @@ function Get-AppDestination($App) {
 function ConvertTo-AppView($App) {
     $isArchive = $App.Type -eq 'archive'
     [pscustomobject]@{
-        PSTypeName       = 'GitHubAppUpdater.App'
+        PSTypeName       = 'Reforge.App'
         Name             = $App.Name
         Repository       = $App.Repository
         Type             = if ($isArchive) { 'Archive' } else { 'Installer' }
@@ -64,7 +75,7 @@ function ConvertTo-AppView($App) {
 # ============================================================================
 
 function Get-RequestHeader([securestring]$Token) {
-    $headers = @{ 'User-Agent' = 'GitHubAppUpdater'; 'Accept' = 'application/vnd.github+json' }
+    $headers = @{ 'User-Agent' = 'Reforge'; 'Accept' = 'application/vnd.github+json' }
     $plain = if ($Token) { [Net.NetworkCredential]::new('', $Token).Password } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN }
     if ($plain) { $headers.Authorization = "Bearer $plain" }
     $headers
@@ -90,7 +101,7 @@ function Save-ReleaseAsset($Asset, [string]$Folder) {
     $ProgressPreference = 'SilentlyContinue'   # much faster downloads in Windows PowerShell
     $file = Join-Path $Folder $Asset.name
     Write-Verbose "Downloading $($Asset.browser_download_url)"
-    Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $file -UseBasicParsing -Headers @{ 'User-Agent' = 'GitHubAppUpdater' }
+    Invoke-WebRequest -Uri $Asset.browser_download_url -OutFile $file -UseBasicParsing -Headers @{ 'User-Agent' = 'Reforge' }
     if ($Asset.digest) {
         $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
         if ("sha256:$hash" -ne $Asset.digest) {
@@ -404,9 +415,9 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
 #  Public commands
 # ============================================================================
 
-function Get-GitHubApp {
+function Get-ReforgeApp {
     [CmdletBinding()]
-    [OutputType('GitHubAppUpdater.App')]
+    [OutputType('Reforge.App')]
     param(
         [Parameter(Position = 0)]
         [SupportsWildcards()]
@@ -419,9 +430,9 @@ function Get-GitHubApp {
     }
 }
 
-function Add-GitHubApp {
+function Add-ReforgeApp {
     [CmdletBinding()]
-    [OutputType('GitHubAppUpdater.App')]
+    [OutputType('Reforge.App')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
         [Alias('Repo')]
@@ -520,7 +531,7 @@ function Add-GitHubApp {
     }
 }
 
-function Remove-GitHubApp {
+function Remove-ReforgeApp {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
@@ -537,7 +548,7 @@ function Remove-GitHubApp {
     process {
         foreach ($n in $Name) {
             $found = @($apps | Where-Object { $_.Name -like $n })
-            if (-not $found) { Write-Error "No app named '$n' in the list. Check the names with Get-GitHubApp."; continue }
+            if (-not $found) { Write-Error "No app named '$n' in the list. Check the names with Get-ReforgeApp."; continue }
             foreach ($app in $found) {
                 if ($PSCmdlet.ShouldProcess($app.Name, 'Stop tracking')) {
                     [void]$apps.Remove($app)
@@ -551,9 +562,9 @@ function Remove-GitHubApp {
     }
 }
 
-function Find-GitHubApp {
+function Find-ReforgeApp {
     [CmdletBinding()]
-    [OutputType('GitHubAppUpdater.Candidate')]
+    [OutputType('Reforge.Candidate')]
     param(
         [ValidateNotNullOrEmpty()][string]$ConfigPath = $script:DefaultConfigPath
     )
@@ -573,7 +584,7 @@ function Find-GitHubApp {
         if ($tracked -contains $repo -or $wingetNames -contains $program.DisplayName -or $seen[$repo]) { continue }
         $seen[$repo] = $true
         [pscustomobject]@{
-            PSTypeName = 'GitHubAppUpdater.Candidate'
+            PSTypeName = 'Reforge.Candidate'
             Name       = $program.DisplayName
             Repository = $repo
             Version    = $program.DisplayVersion
@@ -581,9 +592,9 @@ function Find-GitHubApp {
     }
 }
 
-function Update-GitHubApp {
+function Update-ReforgeApp {
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType('GitHubAppUpdater.Result')]
+    [OutputType('Reforge.Result')]
     param(
         [Parameter(Position = 0, ValueFromPipelineByPropertyName)]
         [SupportsWildcards()]
@@ -602,7 +613,7 @@ function Update-GitHubApp {
     end {
         $apps = @(Read-AppList $ConfigPath)
         if (-not $apps) {
-            Write-Warning 'No apps in the list yet. Add one with Add-GitHubApp, or find installed ones with Find-GitHubApp.'
+            Write-Warning 'No apps in the list yet. Add one with Add-ReforgeApp, or find installed ones with Find-ReforgeApp.'
             return
         }
         $targets = if ($requested.Count) { @($apps | Where-Object { $app = $_; $requested | Where-Object { $app.Name -like $_ } }) } else { $apps }
@@ -648,11 +659,11 @@ function Update-GitHubApp {
             }
             if ($script:ListChanged) { Save-AppList $ConfigPath $apps; $script:ListChanged = $false }
             $out = [pscustomobject]$result
-            $out.PSObject.TypeNames.Insert(0, 'GitHubAppUpdater.Result')
+            $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
             $out
         }
         Write-Progress -Activity 'Updating GitHub apps' -Completed
     }
 }
 
-Export-ModuleMember -Function Get-GitHubApp, Add-GitHubApp, Remove-GitHubApp, Find-GitHubApp, Update-GitHubApp
+Export-ModuleMember -Function Get-ReforgeApp, Add-ReforgeApp, Remove-ReforgeApp, Find-ReforgeApp, Update-ReforgeApp

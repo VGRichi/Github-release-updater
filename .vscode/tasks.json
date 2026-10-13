@@ -5,28 +5,28 @@
       "label": "GitHub apps: check for updates",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Update-GitHubApp -WhatIf"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Update-ReforgeApp -WhatIf"],
       "problemMatcher": []
     },
     {
       "label": "GitHub apps: update all (run VS Code as admin for installers)",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Update-GitHubApp"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Update-ReforgeApp"],
       "problemMatcher": []
     },
     {
       "label": "GitHub apps: list",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Get-GitHubApp"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Get-ReforgeApp"],
       "problemMatcher": []
     },
     {
       "label": "GitHub apps: find installed GitHub apps",
       "type": "process",
       "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/GitHubAppUpdater' -Force; Find-GitHubApp"],
+      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Find-ReforgeApp"],
       "problemMatcher": []
     }
   ]

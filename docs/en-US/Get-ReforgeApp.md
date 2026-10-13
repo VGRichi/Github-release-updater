@@ -1,11 +1,11 @@
 ---
-external help file: GitHubAppUpdater-help.xml
-Module Name: GitHubAppUpdater
-online version: https://github.com/VGRichi/github-app-updater/blob/main/docs/en-US/Get-GitHubApp.md
+external help file: Reforge-help.xml
+Module Name: Reforge
+online version: https://github.com/VGRichi/Reforge/blob/main/docs/en-US/Get-ReforgeApp.md
 schema: 2.0.0
 ---
 
-# Get-GitHubApp
+# Get-ReforgeApp
 
 ## SYNOPSIS
 Lists the apps and tools you're tracking.
@@ -13,7 +13,7 @@ Lists the apps and tools you're tracking.
 ## SYNTAX
 
 ```
-Get-GitHubApp [[-Name] <String[]>] [-ConfigPath <String>]
+Get-ReforgeApp [[-Name] <String[]>] [-ConfigPath <String>]
  [<CommonParameters>]
 ```
 
@@ -25,21 +25,21 @@ Shows every app in your list, with its GitHub repository, whether it's an instal
 
 ### EXAMPLE 1
 ```
-Get-GitHubApp
+Get-ReforgeApp
 ```
 
 Lists everything you're tracking.
 
 ### EXAMPLE 2
 ```
-Get-GitHubApp -Name DXVK*
+Get-ReforgeApp -Name DXVK*
 ```
 
 Lists only the apps whose name starts with DXVK.
 
 ### EXAMPLE 3
 ```
-Get-GitHubApp | Format-List *
+Get-ReforgeApp | Format-List *
 ```
 
 Shows every detail, including installed versions of archive tools and which apps are trusted.
@@ -84,7 +84,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## OUTPUTS
 
-### GitHubAppUpdater.App
+### Reforge.App
 ## NOTES
 
 ## RELATED LINKS

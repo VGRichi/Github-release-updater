@@ -1,11 +1,11 @@
 ---
-external help file: GitHubAppUpdater-help.xml
-Module Name: GitHubAppUpdater
-online version: https://github.com/VGRichi/github-app-updater/blob/main/docs/en-US/Update-GitHubApp.md
+external help file: Reforge-help.xml
+Module Name: Reforge
+online version: https://github.com/VGRichi/Reforge/blob/main/docs/en-US/Update-ReforgeApp.md
 schema: 2.0.0
 ---
 
-# Update-GitHubApp
+# Update-ReforgeApp
 
 ## SYNOPSIS
 Updates your tracked apps and tools to their latest GitHub release.
@@ -13,7 +13,7 @@ Updates your tracked apps and tools to their latest GitHub release.
 ## SYNTAX
 
 ```
-Update-GitHubApp [[-Name] <String[]>] [-Token <SecureString>] [-ConfigPath <String>]
+Update-ReforgeApp [[-Name] <String[]>] [-Token <SecureString>] [-ConfigPath <String>]
  [-WhatIf] [-Confirm] [<CommonParameters>]
 ```
 
@@ -29,7 +29,7 @@ with replaced files backed up first.
 
 Downloads with a GitHub checksum are verified before installing.
 Downloads without one are
-only installed after you confirm, or if the app is trusted (Add-GitHubApp -AllowUnverified).
+only installed after you confirm, or if the app is trusted (Add-ReforgeApp -AllowUnverified).
 If an app's earlier releases had checksums and a new one doesn't, it always asks.
 
 Use -WhatIf to see what would be updated without installing anything (no admin needed).
@@ -39,14 +39,14 @@ Outputs one result per app.
 
 ### EXAMPLE 1
 ```
-Update-GitHubApp -WhatIf
+Update-ReforgeApp -WhatIf
 ```
 
 Shows which apps have updates, without installing anything.
 
 ### EXAMPLE 2
 ```
-Update-GitHubApp
+Update-ReforgeApp
 ```
 
 Updates everything.
@@ -54,21 +54,21 @@ Apps installed for all users need PowerShell running as administrator.
 
 ### EXAMPLE 3
 ```
-Update-GitHubApp -Name 'DXVK*' -Verbose
+Update-ReforgeApp -Name 'DXVK*' -Verbose
 ```
 
 Updates only the DXVK entries and shows each step.
 
 ### EXAMPLE 4
 ```
-Update-GitHubApp -Token (Read-Host -AsSecureString 'GitHub token')
+Update-ReforgeApp -Token (Read-Host -AsSecureString 'GitHub token')
 ```
 
 Uses a GitHub token for this run.
 
 ### EXAMPLE 5
 ```
-Update-GitHubApp | Where-Object Status -eq 'Failed'
+Update-ReforgeApp | Where-Object Status -eq 'Failed'
 ```
 
 Shows only the apps that failed to update.
@@ -161,7 +161,7 @@ This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable
 
 ## OUTPUTS
 
-### GitHubAppUpdater.Result
+### Reforge.Result
 ## NOTES
 
 ## RELATED LINKS
