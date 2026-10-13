@@ -51,9 +51,13 @@ Describe 'The Reforge module' {
             Join-Path $repoRoot "docs\en-US\$Command.md" | Should -Exist
         }
 
-        It 'describes each command with its own synopsis on the module help page' -Tag KnownBug {
+        It 'describes <Command> with its own synopsis on the module help page' -TestCases @(
+            @{ Command = 'Add-ReforgeApp' }, @{ Command = 'Get-ReforgeApp' }, @{ Command = 'Remove-ReforgeApp' }
+            @{ Command = 'Find-ReforgeApp' }, @{ Command = 'Update-ReforgeApp' }
+        ) {
             $page = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\en-US\Reforge.md') -Raw
-            ([regex]::Matches($page, [regex]::Escape($manifest.Description))).Count | Should -BeLessOrEqual 1
+            $synopsis = (Get-Help $Command).Synopsis.Trim()
+            $page | Should -Match ([regex]::Escape("### [$Command]($Command.md)") + '\s+' + [regex]::Escape($synopsis))
         }
     }
 
