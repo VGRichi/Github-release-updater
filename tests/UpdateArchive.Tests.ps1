@@ -128,18 +128,29 @@ Describe 'Updating archive tools' {
         }
         AfterEach { $lock.Dispose() }
 
-        It 'reports Failed instead of Updated' -Tag KnownBug {
-            (Update-ReforgeApp -ConfigPath $config -ErrorAction SilentlyContinue 3>$null).Status | Should -Be 'Failed'
+        It 'reports Failed instead of Updated' {
+            $result = Update-ReforgeApp -ConfigPath $config 3>$null
+            $result.Status | Should -Be 'Failed'
+            $result.Note | Should -BeLike "Couldn't update*is the app running?*put back."
         }
 
-        It 'does not record the new version, so the next run tries again' -Tag KnownBug {
-            Update-ReforgeApp -ConfigPath $config -ErrorAction SilentlyContinue 3>$null | Out-Null
+        It 'does not record the new version, so the next run tries again' {
+            Update-ReforgeApp -ConfigPath $config 3>$null | Out-Null
             (Read-TestAppList $config).PSObject.Properties['InstalledVersion'] | Should -BeNullOrEmpty
         }
 
-        It 'puts back the files it already replaced' -Tag KnownBug {
-            Update-ReforgeApp -ConfigPath $config -ErrorAction SilentlyContinue 3>$null | Out-Null
+        It 'puts back the files it already replaced' {
+            Update-ReforgeApp -ConfigPath $config 3>$null | Out-Null
             Get-Content -LiteralPath (Join-Path $game 'd3d11.dll') -Raw | Should -Be 'old d3d11'
+        }
+
+        It 'puts back files in destinations that were already done' {
+            $first = New-TestTree (Join-Path $case 'First') @{ 'd3d11.dll' = 'old first' }
+            $app.Destination = @($first, $game)
+            Write-TestAppList $config @($app)
+            Update-ReforgeApp -ConfigPath $config 3>$null | Out-Null
+            Get-Content -LiteralPath (Join-Path $first 'd3d11.dll') -Raw | Should -Be 'old first'
+            Test-Path -LiteralPath (Join-Path $first 'dxgi.dll') | Should -BeFalse   # added by the update, so removed again
         }
     }
 }
