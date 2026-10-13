@@ -126,6 +126,8 @@ Installer apps install with admin rights and no installer window, so the module 
 
 `Update-ReforgeApp -WhatIf` shows which updates are unverified before anything runs.
 
+When nobody can answer a prompt (a scheduled task, or `pwsh -NonInteractive`), the answer is **No**: unverified downloads are skipped with a warning, and everything else updates normally. To update an app without a checksum unattended, trust it with `-AllowUnverified`.
+
 A checksum confirms you got **exactly the file on the release page**. It can't tell whether the release itself is trustworthy, for example if a developer's GitHub account were hacked. Only track apps from developers you trust.
 
 Thanks to the Reddit commenters whose feedback shaped the security rules and the move to a proper module.

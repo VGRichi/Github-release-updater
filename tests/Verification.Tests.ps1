@@ -19,6 +19,17 @@ Describe 'Download verification' {
         }
     }
 
+    Context 'Read-Choice' {
+        It 'answers with the default, and warns, when PowerShell is non-interactive' {
+            # Same PowerShell edition as this test run, started with -NonInteractive
+            $exe = (Get-Process -Id $PID).Path
+            $command = "Import-Module '$ModuleRoot'; & (Get-Module Reforge) { Read-Choice 'Unverified download' 'Install it?' @('&Yes', '&No') 1 } 3>&1"
+            $output = & $exe -NoProfile -NonInteractive -Command $command 2>&1 | ForEach-Object { "$_" }
+            $output | Should -Contain '1'
+            $output -join "`n" | Should -BeLike "*Can't ask here: Install it? Answering 'No'*"
+        }
+    }
+
     Context 'Approve-Install' {
         BeforeEach {
             Mock -ModuleName Reforge Read-Choice { throw 'Unexpected prompt' }
