@@ -1,6 +1,47 @@
 [
-  { "Name": "PhotoCraft", "Repo": "storytold/photocraft" },
-  { "Name": "MyApp", "Repo": "someone/myapp", "Pattern": "*win-x64-setup.exe" },
-  { "Name": "BetaApp", "Repo": "someone/betaapp", "Prerelease": true },
-  { "Name": "OddInstaller", "Repo": "someone/oddinstaller", "SilentArgs": "--silent" }
+  {
+    "Name": "PhotoCraft",
+    "Repo": "storytold/photocraft"
+  },
+  {
+    "Name": "MyApp",
+    "Repo": "someone/myapp",
+    "Pattern": "*win-x64-setup.exe"
+  },
+  {
+    "Name": "BetaApp",
+    "Repo": "someone/betaapp",
+    "Prerelease": true
+  },
+  {
+    "Name": "OddInstaller",
+    "Repo": "someone/oddinstaller",
+    "SilentArgs": "--silent",
+    "AllowUnverified": true
+  },
+  {
+    "Name": "DXVK (my games)",
+    "Repo": "doitsujin/dxvk",
+    "Type": "archive",
+    "Subfolder": "x64",
+    "Include": [
+      "*.dll"
+    ],
+    "Destinations": [
+      "D:\\Games\\Game One",
+      "D:\\Games\\Game Two\\bin"
+    ]
+  },
+  {
+    "Name": "OptiScaler (Cyberpunk)",
+    "Repo": "optiscaler/OptiScaler",
+    "Type": "archive",
+    "Destination": "D:\\Games\\Cyberpunk 2077\\bin\\x64",
+    "Rename": {
+      "OptiScaler.dll": "dxgi.dll"
+    },
+    "Keep": [
+      "*.ini"
+    ]
+  }
 ]
