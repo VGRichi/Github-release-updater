@@ -689,7 +689,9 @@ function Update-ReforgeApp {
                 $result.Note = $_.Exception.Message
                 Write-Warning "$($app.Name): $($_.Exception.Message)"
             }
-            if ($script:ListChanged) { Save-AppList $ConfigPath $apps; $script:ListChanged = $false }
+            # -WhatIf changes nothing on disk, not even what it learned (like HadDigest)
+            if ($script:ListChanged -and -not $WhatIfPreference) { Save-AppList $ConfigPath $apps }
+            $script:ListChanged = $false
             $out = [pscustomobject]$result
             $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
             $out

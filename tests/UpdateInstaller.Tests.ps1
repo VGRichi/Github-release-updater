@@ -159,7 +159,7 @@ Describe 'Updating installer apps' {
             Should -Invoke Invoke-Installer -ModuleName Reforge -Times 0 -Exactly
         }
 
-        It 'does not write the app list with -WhatIf' -Tag KnownBug {
+        It 'does not write the app list with -WhatIf' {
             $before = Get-Content -LiteralPath $config -Raw
             Update-ReforgeApp -ConfigPath $config -WhatIf | Out-Null
             Get-Content -LiteralPath $config -Raw | Should -Be $before
