@@ -48,9 +48,14 @@ function Read-AppList([string]$Path) {
 }
 
 function Save-AppList([string]$Path, $Items) {
+    # Write a temp file and swap it in, so a crash or full disk never leaves a half-written list
+    $Path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Path)
     $dir = Split-Path -Parent $Path
-    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -WhatIf:$false | Out-Null }
-    ConvertTo-Json -InputObject @($Items) -Depth 5 | Set-Content -LiteralPath $Path -Encoding utf8 -WhatIf:$false
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force -WhatIf:$false | Out-Null }
+    $temp = "$Path.tmp"
+    ConvertTo-Json -InputObject @($Items) -Depth 5 | Set-Content -LiteralPath $temp -Encoding utf8 -WhatIf:$false
+    if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($temp, $Path, [NullString]::Value) }   # no backup file
+    else { [IO.File]::Move($temp, $Path) }
 }
 
 function Set-AppField($App, [string]$Field, $Value) {
