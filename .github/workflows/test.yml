@@ -1,5 +1,5 @@
-# Runs the Pester tests on every push and pull request, in both PowerShell 7 and
-# Windows PowerShell 5.1.
+# Runs the Pester tests on every push to main and every pull request, in both PowerShell 7 and
+# Windows PowerShell 5.1. (A step's shell can't come from a matrix, so each has its own step.)
 name: Tests
 
 on:
@@ -13,20 +13,23 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shell: [pwsh, powershell]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: Run tests (${{ matrix.shell }})
-        shell: ${{ matrix.shell }}
+      - name: Run tests (PowerShell 7)
+        shell: pwsh
+        run: ./build/invoke-tests.ps1 -CI
+
+      - name: Run tests (Windows PowerShell 5.1)
+        if: ${{ !cancelled() }}
+        shell: powershell
         run: ./build/invoke-tests.ps1 -CI
 
       - name: Upload test results
-        if: always()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.shell }}
+          name: test-results
           path: out/test-results-*.xml
