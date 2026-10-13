@@ -85,9 +85,9 @@ Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' 
 |---|---|
 | `-Destination` | Folder(s) the files go into; several folders are allowed |
 | `-Subfolder` | Copy one folder from inside the archive (DXVK has `x64` and `x32`) |
-| `-Include` | Only copy matching files, e.g. `'*.dll'` |
+| `-Include` | Only copy matching files, by name or path, e.g. `'*.dll'` or `'bin\*'` |
 | `-Rename` | Rename files while copying |
-| `-Keep` | Files that are added if missing but never overwritten (your settings) |
+| `-Keep` | Files that are added if missing but never overwritten (your settings), by name or path, e.g. `'*.ini'` or `'config\*'` |
 
 Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
 
