@@ -237,28 +237,34 @@ function Select-InstallerAsset($Release, [string]$Pattern, [bool]$WantMsi) {
         Select-Object -First 1 -ExpandProperty Asset
 }
 
-function Invoke-Installer([string]$File, [string]$SilentArgs) {
-    if ($File -match '(?i)\.msi$') {
-        $p = Start-Process -FilePath msiexec.exe -ArgumentList "/i `"$File`" /qn /norestart" -Wait -PassThru
-        return $p.ExitCode
-    }
-    if (-not $SilentArgs) {
-        # Detect common installer types from the first few MB of the file
-        $fs  = [IO.File]::OpenRead($File)
+function Get-InstallerSilentArg([string]$File) {
+    # Detect common installer types from the first few MB of the file
+    $fs = [IO.File]::OpenRead($File)
+    try {
         $buf = New-Object byte[] ([Math]::Min(4MB, $fs.Length))
         [void]$fs.Read($buf, 0, $buf.Length)
-        $fs.Close()
-        $text = [Text.Encoding]::ASCII.GetString($buf)
-        if     ($text -match 'Inno Setup') { $SilentArgs = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
-        elseif ($text -match 'Nullsoft')   { $SilentArgs = '/S' }
-    }
-    if ($SilentArgs) {
-        $p = Start-Process -FilePath $File -ArgumentList $SilentArgs -Wait -PassThru
-    } else {
-        Write-Warning "Unknown installer type for $([IO.Path]::GetFileName($File)); opening it normally."
-        $p = Start-Process -FilePath $File -Wait -PassThru
-    }
+    } finally { $fs.Dispose() }
+    $text = [Text.Encoding]::ASCII.GetString($buf)
+    if     ($text -match 'Inno Setup') { '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' }
+    elseif ($text -match 'Nullsoft')   { '/S' }
+}
+
+function Start-InstallerProcess([string]$FilePath, [string]$ArgumentList) {
+    # Waits for the installer only. Start-Process -Wait also waits for everything it starts, so an
+    # installer that opens the app when it's done would block until you close the app.
+    $params = @{ FilePath = $FilePath; PassThru = $true }
+    if ($ArgumentList) { $params.ArgumentList = $ArgumentList }
+    $p = Start-Process @params
+    $null = $p.Handle   # without an open handle, Windows PowerShell can lose the exit code
+    $p.WaitForExit()
     $p.ExitCode
+}
+
+function Invoke-Installer([string]$File, [string]$SilentArgs) {
+    if ($File -match '(?i)\.msi$') { return Start-InstallerProcess msiexec.exe "/i `"$File`" /qn /norestart" }
+    if (-not $SilentArgs) { $SilentArgs = Get-InstallerSilentArg $File }
+    if (-not $SilentArgs) { Write-Warning "Unknown installer type for $([IO.Path]::GetFileName($File)); opening it normally." }
+    Start-InstallerProcess $File $SilentArgs
 }
 
 function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
