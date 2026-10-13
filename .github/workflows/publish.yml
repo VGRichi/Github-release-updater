@@ -29,6 +29,10 @@ jobs:
             throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in Reforge.psd1"
           }
 
+      - name: Run tests
+        shell: pwsh
+        run: ./build/invoke-tests.ps1 -CI
+
       - name: Build help (Get-Help XML and Update-Help files)
         shell: pwsh
         run: ./build/Build-Help.ps1 -Cab

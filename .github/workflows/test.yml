@@ -1,0 +1,32 @@
+# Runs the Pester tests on every push and pull request, in both PowerShell 7 and
+# Windows PowerShell 5.1.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [pwsh, powershell]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests (${{ matrix.shell }})
+        shell: ${{ matrix.shell }}
+        run: ./build/invoke-tests.ps1 -CI
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.shell }}
+          path: out/test-results-*.xml
