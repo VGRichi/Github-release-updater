@@ -298,7 +298,8 @@ function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
     $Result.Status = 'UpdateAvailable'
     $Result.Note = Get-VerificationNote $App $asset
     if (-not $Cmdlet.ShouldProcess("$($App.Name) $($Release.tag_name)", "Install $($asset.name)")) { return }
-    if (-not (Test-PerUserInstall $Program) -and -not (Test-IsAdmin)) { $Result.Status = 'NeedsAdmin'; $Result.Note = 'Installed for all users; run PowerShell as administrator'; return }    if (-not (Approve-Install $App $asset)) { $Result.Status = 'Skipped'; $Result.Note = 'Unverified download declined'; return }
+    if (-not (Test-PerUserInstall $Program) -and -not (Test-IsAdmin)) { $Result.Status = 'NeedsAdmin'; $Result.Note = 'Installed for all users; run PowerShell as administrator'; return }
+    if (-not (Approve-Install $App $asset)) { $Result.Status = 'Skipped'; $Result.Note = 'Unverified download declined'; return }
 
     $work = New-WorkFolder
     try {
