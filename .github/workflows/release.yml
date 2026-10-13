@@ -1,0 +1,26 @@
+# When you publish a release on GitHub, this attaches install.ps1 and
+# Update-GitHubApps.ps1 from that release's tag as downloadable files.
+name: Attach scripts to release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Upload scripts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            install.ps1 Update-GitHubApps.ps1 \
+            --clobber --repo "${{ github.repository }}"
