@@ -7,25 +7,21 @@ docs/<culture>/*.md (for example docs/en-US) is the source of the module's help.
 This script turns each culture folder into the XML help that Get-Help reads
 (Reforge/<culture>/Reforge-help.xml).
 
--Init is a one-time step: it creates docs/en-US from the comment-based help in the
-module, then removes those comment blocks from the code.
-
 -Cab also builds the files Update-Help downloads (a .cab/.zip per culture and a
 HelpInfo.xml) into out/help. Building .cab files needs Windows.
 
 Uses platyPS 0.14.2, installed for the current user if missing (no admin needed).
 
 .EXAMPLE
-.\build\Build-Help.ps1 -Init
-One-time: create docs/en-US from the current help and build the XML.
+.\build\build-help.ps1
+Rebuild the XML help after editing files in docs/.
 
 .EXAMPLE
-.\build\Build-Help.ps1
-Rebuild the XML help after editing files in docs/.
+.\build\build-help.ps1 -Cab
+Also build the Update-Help files.
 #>
 [CmdletBinding()]
 param(
-    [switch]$Init,
     [switch]$Cab,
     [string]$OutputPath = (Join-Path (Split-Path -Parent $PSScriptRoot) 'out')
 )
@@ -36,7 +32,6 @@ $moduleDir = Join-Path $root 'Reforge'
 $docsRoot  = Join-Path $root 'docs'
 $manifest  = Import-PowerShellDataFile (Join-Path $moduleDir 'Reforge.psd1')
 $version   = $manifest.ModuleVersion
-$repoUrl   = $manifest.PrivateData.PSData.ProjectUri
 $platyVer  = '0.14.2'
 
 if (-not (Get-Module platyPS -ListAvailable | Where-Object { $_.Version -eq $platyVer })) {
@@ -45,43 +40,9 @@ if (-not (Get-Module platyPS -ListAvailable | Where-Object { $_.Version -eq $pla
 }
 Import-Module platyPS -RequiredVersion $platyVer -Force
 
-# ---------------------------------------------------------------- one-time conversion
-if ($Init) {
-    $enUS = Join-Path $docsRoot 'en-US'
-    if (Test-Path $enUS) { throw 'docs/en-US already exists. -Init is a one-time step; edit the files in docs/ instead.' }
-
-    $psm1 = Join-Path $moduleDir 'Reforge.psm1'
-    $code = Get-Content $psm1 -Raw
-    $helpBlock = '(?ms)^[ \t]*<#[ \t]*\r?\n[ \t]*\.SYNOPSIS.*?#>[ \t]*\r?\n'
-    $blocks = [regex]::Matches($code, $helpBlock).Count
-    if ($blocks -eq 0) { throw 'No comment-based help found in the module. Has -Init already been run?' }
-
-    Write-Host 'Creating docs/en-US from the comment-based help...'
-    Import-Module $moduleDir -Force
-    New-MarkdownHelp -Module Reforge -OutputFolder $enUS -WithModulePage -AlphabeticParamsOrder `
-        -Locale 'en-US' -HelpVersion $version -FwLink $manifest.HelpInfoURI -Force | Out-Null
-
-    foreach ($file in Get-ChildItem $enUS -Filter '*.md') {
-        $text = Get-Content $file.FullName -Raw
-        if ($file.BaseName -eq 'Reforge') {
-            $text = $text -replace '\{\{ ?Fill in the Description ?\}\}', $manifest.Description
-        } else {
-            # Lets Get-Help -Online open the page on GitHub
-            $text = $text -replace '(?m)^online version:.*$', "online version: $repoUrl/blob/main/docs/en-US/$($file.Name)"
-        }
-        # platyPS 0.14 lists PowerShell 7.4's -ProgressAction common parameter as a normal one; remove it
-        $text = $text -replace ' \[-ProgressAction <ActionPreference>\]', ''
-        $text = $text -replace '(?s)### -ProgressAction.*?(?=### |## )', ''
-        Set-Content -LiteralPath $file.FullName -Value $text -Encoding utf8 -NoNewline
-    }
-
-    Write-Host "Removing $blocks comment-based help blocks from Reforge.psm1..."
-    Set-Content -LiteralPath $psm1 -Value ([regex]::Replace($code, $helpBlock, '')) -Encoding utf8 -NoNewline
-}
-
 # ---------------------------------------------------------------- build XML help
 $cultures = @(Get-ChildItem $docsRoot -Directory -ErrorAction SilentlyContinue)
-if (-not $cultures) { throw 'No docs/<culture> folders found. Run with -Init first.' }
+if (-not $cultures) { throw 'No docs/<culture> folders found.' }
 
 foreach ($culture in $cultures) {
     $out = Join-Path $moduleDir $culture.Name
@@ -102,7 +63,7 @@ if ($Cab) {
 
     $v = [version]$version
     $helpVersion = '{0}.{1}.{2}.{3}' -f $v.Major, $v.Minor, [Math]::Max($v.Build, 0), [Math]::Max($v.Revision, 0)
-    $temp = Join-Path ([IO.Path]::GetTempPath()) ('gau-help-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ('reforge-help-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path $temp | Out-Null
     try {
         foreach ($culture in $cultures) {

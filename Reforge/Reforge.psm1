@@ -7,7 +7,7 @@
 $script:AppDataRoot = if ($env:APPDATA) { $env:APPDATA } else { [Environment]::GetFolderPath('ApplicationData') }
 $script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'Reforge') 'apps.json'
 
-# One-time move of the app list from the old name (GitHubAppUpdater v1/v2)
+# LEGACY, remove in 4.0: one-time move of the app list from the old name (GitHubAppUpdater v1/v2)
 $legacyConfig = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
 if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -LiteralPath $legacyConfig)) {
     try {
@@ -33,10 +33,15 @@ function Read-AppList([string]$Path) {
     $raw = Get-Content -LiteralPath $Path -Raw
     if (-not ($raw -and $raw.Trim())) { return }
     foreach ($item in (ConvertFrom-Json -InputObject $raw)) {
-        # Lists from v1 used "Repo"; v2 uses "Repository"
+        # LEGACY (GitHubAppUpdater v1/v2 lists), remove in 4.0: "Repo" is now "Repository",
+        # and "Destinations" is merged into "Destination"
         if ($item.PSObject.Properties['Repo'] -and -not $item.PSObject.Properties['Repository']) {
             $item | Add-Member -NotePropertyName Repository -NotePropertyValue $item.Repo
             $item.PSObject.Properties.Remove('Repo')
+        }
+        if ($item.PSObject.Properties['Destinations']) {
+            $item | Add-Member -NotePropertyName Destination -NotePropertyValue @(@($item.Destination) + @($item.Destinations) | Where-Object { $_ }) -Force
+            $item.PSObject.Properties.Remove('Destinations')
         }
         $item
     }
@@ -54,7 +59,7 @@ function Set-AppField($App, [string]$Field, $Value) {
 }
 
 function Get-AppDestination($App) {
-    @(@($App.Destination) + @($App.Destinations) | Where-Object { $_ })
+    @($App.Destination | Where-Object { $_ })
 }
 
 function ConvertTo-AppView($App) {
@@ -92,7 +97,7 @@ function Get-LatestRelease([string]$Repository, [bool]$Prerelease, [hashtable]$H
 }
 
 function New-WorkFolder {
-    $path = Join-Path ([IO.Path]::GetTempPath()) ('ghupd-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $path = Join-Path ([IO.Path]::GetTempPath()) ('reforge-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Path $path -WhatIf:$false | Out-Null
     $path
 }
@@ -480,7 +485,7 @@ function Add-ReforgeApp {
     [OutputType('Reforge.App')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
-        [Alias('Repo')]
+        [Alias('Repo')]   # LEGACY: GitHubAppUpdater v1 lists and CSVs used Repo
         [string]$Repository,
 
         [Parameter(Position = 1, ValueFromPipelineByPropertyName)]
@@ -674,7 +679,7 @@ function Update-ReforgeApp {
 
         foreach ($app in $targets) {
             $i++
-            Write-Progress -Activity 'Updating GitHub apps' -Status $app.Name -PercentComplete (($i - 1) / $targets.Count * 100)
+            Write-Progress -Activity 'Updating Reforge apps' -Status $app.Name -PercentComplete (($i - 1) / $targets.Count * 100)
             $result = [ordered]@{ Name = $app.Name; Repository = $app.Repository; Installed = $null; Latest = $null; Status = $null; Note = $null }
             try {
                 $isArchive = $app.Type -eq 'archive'
@@ -710,7 +715,7 @@ function Update-ReforgeApp {
             $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
             $out
         }
-        Write-Progress -Activity 'Updating GitHub apps' -Completed
+        Write-Progress -Activity 'Updating Reforge apps' -Completed
     }
 }
 
