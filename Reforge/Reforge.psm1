@@ -150,8 +150,16 @@ function Test-IsAdmin {
 # ============================================================================
 
 function Read-Choice([string]$Caption, [string]$Message, [string[]]$Labels, [int]$Default) {
+    # With nobody to answer (pwsh -NonInteractive, a scheduled task, a service), use the default.
+    # Every prompt in this module defaults to the safe answer.
     $choices = [System.Management.Automation.Host.ChoiceDescription[]]@($Labels | ForEach-Object { [System.Management.Automation.Host.ChoiceDescription]::new($_) })
-    $Host.UI.PromptForChoice($Caption, $Message, $choices, $Default)
+    try {
+        if (-not [Environment]::UserInteractive) { throw [InvalidOperationException]::new('No interactive session.') }
+        $Host.UI.PromptForChoice($Caption, $Message, $choices, $Default)
+    } catch [InvalidOperationException], [System.Management.Automation.Host.HostException], [IO.IOException] {
+        Write-Warning "Can't ask here: $Message Answering '$($Labels[$Default] -replace '&')'."
+        $Default
+    }
 }
 
 function Get-VerificationNote($App, $Asset) {
