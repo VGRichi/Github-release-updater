@@ -143,6 +143,7 @@ Accept wildcard characters: False
 
 ### -Include
 Archive tools: only copy files matching these wildcards, for example '*.dll'.
+Matches file names or paths inside the archive ('bin\*').
 
 ```yaml
 Type: String[]
@@ -159,6 +160,7 @@ Accept wildcard characters: False
 ### -Keep
 Archive tools: files that are added if missing but never overwritten, like your settings
 files ('*.ini').
+Matches file names or paths inside the archive ('config\*').
 
 ```yaml
 Type: String[]

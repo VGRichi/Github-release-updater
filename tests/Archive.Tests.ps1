@@ -140,7 +140,7 @@ Describe 'Archive helpers' {
             Get-Content -LiteralPath (Join-Path $dest 'dxgi.dll') -Raw | Should -Be 'my dll'
         }
 
-        It 'matches -Keep against relative paths, like -Include does' -Tag KnownBug {
+        It 'matches -Keep against relative paths, like -Include does' {
             New-Item -ItemType Directory -Path (Join-Path $dest 'config') | Out-Null
             Set-Content -LiteralPath (Join-Path $dest 'config\user.ini') -Value 'my user' -NoNewline
             $app = [pscustomobject]@{ Name = 'Tool'; Keep = @('config\*') }

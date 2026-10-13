@@ -365,7 +365,7 @@ function Copy-ArchiveContent($App, [string]$Source, [string]$Destination, [strin
         $backup = $null
         if (Test-Path -LiteralPath $target) {
             # Files marked "Keep" (like your settings) are only added if missing, never overwritten
-            if ($keep | Where-Object { $leaf -like $_ -or $file.Name -like $_ }) { continue }
+            if ($keep | Where-Object { $leaf -like $_ -or $file.Name -like $_ -or $relTarget -like $_ -or $rel -like $_ }) { continue }
             $backup = Join-Path $BackupDir $relTarget
             New-Item -ItemType Directory -Path (Split-Path -Parent $backup) -Force -WhatIf:$false | Out-Null
             Copy-Item -LiteralPath $target -Destination $backup -Force -WhatIf:$false -ErrorAction Stop
