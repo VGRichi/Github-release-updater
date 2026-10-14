@@ -637,7 +637,7 @@ Add-ReforgeApp @app</dev:code>
     <maml:description>
       <maml:para>Downloads the Windows installer (.msi or .exe) from a repository's latest release, installs it silently, and adds the app to your list so Update-ReforgeApp keeps it up to date. When a release has both, the .msi is used.</maml:para>
       <maml:para>It always asks before installing, showing the file and whether it has a GitHub checksum. A download without a checksum gets the same question as in Update-ReforgeApp (Yes, Always, No).</maml:para>
-      <maml:para>The app is tracked by the name it gets in Installed apps, which Install-ReforgeApp sees appear during the install. Give -Name to choose the name yourself.</maml:para>
+      <maml:para>The app is tracked by the name it gets in Installed apps, which Install-ReforgeApp sees appear during the install. Give -Name to choose the name yourself. If no new app appears (for example, it was already installed), it isn't tracked; track it with Add-ReforgeApp and the name shown in Installed apps.</maml:para>
       <maml:para>Some installers need PowerShell running as administrator. For archive tools like DXVK, use Add-ReforgeApp -Destination, then Update-ReforgeApp.</maml:para>
     </maml:description>
     <command:syntax>

@@ -126,13 +126,15 @@ Describe 'Installing apps for the first time' {
         $config | Should -Not -Exist
     }
 
-    It 'warns and tracks it by the repository name when the app does not show up in Installed apps' {
+    It 'warns and tracks nothing when the app does not show up in Installed apps' {
+        # Like reinstalling an app that's already there: nothing new appears
         $script:afterInstall = $script:installed
         $result = Install-ReforgeApp storytold/photocraft -ConfigPath $config -WarningVariable warn 3>$null
         $result.Status | Should -Be 'Installed'
-        $result.Name | Should -Be 'photocraft'
+        $result.Note | Should -Be 'Checksum verified. Not tracked'
         $warn | Should -HaveCount 1
-        (Read-TestAppList $config).Name | Should -Be 'photocraft'
+        $warn[0] | Should -BeLike '*Add-ReforgeApp storytold/photocraft -Name*'
+        $config | Should -Not -Exist
     }
 
     It 'picks the app named like the repository when the installer added several' {

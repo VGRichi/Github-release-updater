@@ -29,6 +29,8 @@ A download without a checksum gets the same question as in Update-ReforgeApp (Ye
 The app is tracked by the name it gets in Installed apps, which Install-ReforgeApp sees appear
 during the install.
 Give -Name to choose the name yourself.
+If no new app appears (for example, it was already installed), it isn't tracked; track it with
+Add-ReforgeApp and the name shown in Installed apps.
 
 Some installers need PowerShell running as administrator.
 For archive tools like DXVK, use Add-ReforgeApp -Destination, then Update-ReforgeApp.
