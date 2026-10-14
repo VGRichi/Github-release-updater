@@ -4,37 +4,38 @@
     {
       "label": "Reforge: check for updates",
       "type": "process",
-      "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Update-ReforgeApp -WhatIf"],
+      "command": "go",
+      "args": ["run", "./cmd/reforge", "update", "--dry-run"],
       "problemMatcher": []
     },
     {
       "label": "Reforge: update all (run VS Code as admin for installers)",
       "type": "process",
-      "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Update-ReforgeApp"],
+      "command": "go",
+      "args": ["run", "./cmd/reforge", "update"],
       "problemMatcher": []
     },
     {
       "label": "Reforge: list",
       "type": "process",
-      "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Get-ReforgeApp"],
+      "command": "go",
+      "args": ["run", "./cmd/reforge", "list"],
       "problemMatcher": []
     },
     {
-      "label": "Reforge: find installed GitHub apps",
+      "label": "Reforge: find apps from GitHub",
       "type": "process",
-      "command": "pwsh",
-      "args": ["-NoProfile", "-Command", "Import-Module '${workspaceFolder}/Reforge' -Force; Find-ReforgeApp"],
+      "command": "go",
+      "args": ["run", "./cmd/reforge", "find"],
       "problemMatcher": []
     },
     {
       "label": "Reforge: run tests",
       "type": "process",
-      "command": "pwsh",
-      "args": ["-NoProfile", "-File", "${workspaceFolder}/build/invoke-tests.ps1"],
-      "problemMatcher": []
+      "command": "go",
+      "args": ["test", "./..."],
+      "group": "test",
+      "problemMatcher": ["$go"]
     }
   ]
 }
