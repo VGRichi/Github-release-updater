@@ -102,12 +102,6 @@ Describe 'Updating archive tools' {
             ForEach-Object { $_.Directory.Name } | Sort-Object | Should -Be @('1', '2')
     }
 
-    It 'reads the old "Destinations" field' {
-        $legacy = [pscustomobject]@{ Name = 'DXVK (Test)'; Repository = 'doitsujin/dxvk'; Type = 'archive'; Destinations = @($game); Subfolder = 'x64' }
-        Write-TestAppList $config @($legacy)
-        (Update-ReforgeApp -ConfigPath $config).Status | Should -Be 'Updated'
-    }
-
     It 'only reports the update with -WhatIf' {
         $result = Update-ReforgeApp -ConfigPath $config -WhatIf
         $result.Status | Should -Be 'UpdateAvailable'

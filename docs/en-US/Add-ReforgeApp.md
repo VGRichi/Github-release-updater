@@ -262,7 +262,7 @@ The GitHub repository as owner/repo, or its full GitHub link.
 ```yaml
 Type: String
 Parameter Sets: (All)
-Aliases: Repo
+Aliases:
 
 Required: True
 Position: 1

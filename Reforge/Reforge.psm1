@@ -6,17 +6,6 @@
 
 $script:AppDataRoot = if ($env:APPDATA) { $env:APPDATA } else { [Environment]::GetFolderPath('ApplicationData') }
 $script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'Reforge') 'apps.json'
-
-# LEGACY, remove in 4.0: one-time move of the app list from the old name (GitHubAppUpdater v1/v2)
-$legacyConfig = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
-if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -LiteralPath $legacyConfig)) {
-    try {
-        New-Item -ItemType Directory -Path (Split-Path -Parent $script:DefaultConfigPath) -Force | Out-Null
-        Copy-Item -LiteralPath $legacyConfig -Destination $script:DefaultConfigPath -ErrorAction Stop
-    } catch {
-        $script:DefaultConfigPath = $legacyConfig
-    }
-}
 $script:ListChanged = $false
 $script:BackupsToKeep = 3                      # per app; older backup folders are deleted
 $script:WorkRoot = [IO.Path]::GetTempPath()    # downloads are extracted in reforge-* folders here
@@ -34,19 +23,8 @@ function Read-AppList([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $raw = Get-Content -LiteralPath $Path -Raw
     if (-not ($raw -and $raw.Trim())) { return }
-    foreach ($item in (ConvertFrom-Json -InputObject $raw)) {
-        # LEGACY (GitHubAppUpdater v1/v2 lists), remove in 4.0: "Repo" is now "Repository",
-        # and "Destinations" is merged into "Destination"
-        if ($item.PSObject.Properties['Repo'] -and -not $item.PSObject.Properties['Repository']) {
-            $item | Add-Member -NotePropertyName Repository -NotePropertyValue $item.Repo
-            $item.PSObject.Properties.Remove('Repo')
-        }
-        if ($item.PSObject.Properties['Destinations']) {
-            $item | Add-Member -NotePropertyName Destination -NotePropertyValue @(@($item.Destination) + @($item.Destinations) | Where-Object { $_ }) -Force
-            $item.PSObject.Properties.Remove('Destinations')
-        }
-        $item
-    }
+    # foreach unrolls the array; Windows PowerShell's ConvertFrom-Json returns it as one object
+    foreach ($item in (ConvertFrom-Json -InputObject $raw)) { $item }
 }
 
 function Save-AppList([string]$Path, $Items) {
@@ -529,7 +507,6 @@ function Add-ReforgeApp {
     [OutputType('Reforge.App')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
-        [Alias('Repo')]   # LEGACY: GitHubAppUpdater v1 lists and CSVs used Repo
         [string]$Repository,
 
         [Parameter(Position = 1, ValueFromPipelineByPropertyName)]

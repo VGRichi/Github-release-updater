@@ -17,20 +17,6 @@ Describe 'The app list' {
             InModuleScope Reforge -Parameters @{ P = $config } { Read-AppList $P } | Should -BeNullOrEmpty
         }
 
-        It 'renames the v1 "Repo" field to "Repository"' {
-            Write-TestAppList $config @([pscustomobject]@{ Name = 'Old'; Repo = 'owner/old' })
-            $app = InModuleScope Reforge -Parameters @{ P = $config } { Read-AppList $P }
-            $app.Repository | Should -Be 'owner/old'
-            $app.PSObject.Properties['Repo'] | Should -BeNullOrEmpty
-        }
-
-        It 'merges the v1 "Destinations" field into "Destination"' {
-            Write-TestAppList $config @([pscustomobject]@{ Name = 'Tool'; Repository = 'o/tool'; Destination = 'C:\A'; Destinations = @('C:\B', 'C:\C') })
-            $app = InModuleScope Reforge -Parameters @{ P = $config } { Read-AppList $P }
-            @($app.Destination) | Should -Be @('C:\A', 'C:\B', 'C:\C')
-            $app.PSObject.Properties['Destinations'] | Should -BeNullOrEmpty
-        }
-
         It 'replaces an existing list without leaving a temp file behind' {
             Write-TestAppList $config @([pscustomobject]@{ Name = 'Old'; Repository = 'o/old' })
             InModuleScope Reforge -Parameters @{ P = $config } { Save-AppList $P @([pscustomobject]@{ Name = 'New'; Repository = 'o/new' }) }
@@ -129,10 +115,10 @@ Describe 'The app list' {
             Test-Path -LiteralPath $config | Should -BeFalse
         }
 
-        It 'takes pipeline input by property name, including the old "Repo" name' {
+        It 'takes pipeline input by property name' {
             @(
                 [pscustomobject]@{ Repository = 'owner/one'; Name = 'One' }
-                [pscustomobject]@{ Repo = 'owner/two' }
+                [pscustomobject]@{ Repository = 'owner/two' }
             ) | Add-ReforgeApp -ConfigPath $config
             (Get-ReforgeApp -ConfigPath $config).Name | Should -Be @('One', 'two')
         }
@@ -158,7 +144,7 @@ Describe 'The app list' {
             Write-TestAppList $config @(
                 [pscustomobject]@{ Name = 'PhotoCraft'; Repository = 'storytold/photocraft'; AllowUnverified = $true }
                 [pscustomobject]@{ Name = 'DXVK (Witcher)'; Repository = 'doitsujin/dxvk'; Type = 'archive'; Destination = @('C:\A', 'C:\B'); InstalledVersion = 'v2.5' }
-                [pscustomobject]@{ Name = 'DXVK (Cyberpunk)'; Repository = 'doitsujin/dxvk'; Type = 'archive'; Destinations = @('C:\C') }
+                [pscustomobject]@{ Name = 'DXVK (Cyberpunk)'; Repository = 'doitsujin/dxvk'; Type = 'archive'; Destination = @('C:\C') }
             )
         }
 
@@ -178,10 +164,6 @@ Describe 'The app list' {
             $apps[1].Destination | Should -Be 'C:\A; C:\B'
             $apps[1].InstalledVersion | Should -Be 'v2.5'
             $apps[1].Trusted | Should -BeFalse
-        }
-
-        It 'reads the old "Destinations" field too' {
-            (Get-ReforgeApp 'DXVK (Cyberpunk)' -ConfigPath $config).Destination | Should -Be 'C:\C'
         }
 
         It 'returns nothing when there is no list yet' {

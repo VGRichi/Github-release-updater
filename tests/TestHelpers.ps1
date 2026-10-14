@@ -9,8 +9,7 @@
 $ModuleRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'Reforge'
 
 function Import-ReforgeForTest {
-    # Point APPDATA at the test drive, so importing the module (which migrates old app lists)
-    # never touches the real %APPDATA%\Reforge
+    # Point APPDATA at the test drive, so the default app list is never the real %APPDATA%\Reforge
     $env:APPDATA = Join-Path $TestDrive 'AppData'
     New-Item -ItemType Directory -Path $env:APPDATA -Force | Out-Null
     Import-Module $ModuleRoot -Force

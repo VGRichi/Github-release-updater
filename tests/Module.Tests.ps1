@@ -10,7 +10,6 @@ Describe 'The Reforge module' {
     }
     AfterAll {
         $env:APPDATA = $originalAppData
-        # Don't re-import here: with the real APPDATA, importing could migrate your real app list
         Remove-Module Reforge -ErrorAction SilentlyContinue
     }
 
@@ -62,33 +61,11 @@ Describe 'The Reforge module' {
     }
 
     Context 'Importing' {
-        It 'creates nothing in APPDATA when there is no old app list' {
+        It 'creates nothing in APPDATA' {
             $env:APPDATA = Join-Path $TestDrive 'EmptyAppData'
             New-Item -ItemType Directory -Path $env:APPDATA | Out-Null
             Import-Module $ModuleRoot -Force
             Get-ChildItem -LiteralPath $env:APPDATA | Should -BeNullOrEmpty
-        }
-
-        It 'copies a GitHubAppUpdater app list to the new location' {
-            $env:APPDATA = Join-Path $TestDrive 'LegacyAppData'
-            $legacy = Join-Path $env:APPDATA 'GitHubAppUpdater\github-apps.json'
-            New-Item -ItemType Directory -Path (Split-Path -Parent $legacy) -Force | Out-Null
-            Write-TestAppList $legacy @([pscustomobject]@{ Name = 'Old'; Repo = 'owner/old' })
-            Import-Module $ModuleRoot -Force
-            Join-Path $env:APPDATA 'Reforge\apps.json' | Should -Exist
-            (Get-ReforgeApp).Repository | Should -Be 'owner/old'
-            Test-Path -LiteralPath $legacy | Should -BeTrue   # the old file is left alone
-        }
-
-        It 'does not overwrite an existing Reforge app list' {
-            $env:APPDATA = Join-Path $TestDrive 'BothAppData'
-            $legacy = Join-Path $env:APPDATA 'GitHubAppUpdater\github-apps.json'
-            $current = Join-Path $env:APPDATA 'Reforge\apps.json'
-            New-Item -ItemType Directory -Path (Split-Path -Parent $legacy), (Split-Path -Parent $current) -Force | Out-Null
-            Write-TestAppList $legacy @([pscustomobject]@{ Name = 'Old'; Repository = 'owner/old' })
-            Write-TestAppList $current @([pscustomobject]@{ Name = 'New'; Repository = 'owner/new' })
-            Import-Module $ModuleRoot -Force
-            (Get-ReforgeApp).Name | Should -Be 'New'
         }
     }
 }
