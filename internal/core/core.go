@@ -24,6 +24,7 @@ import (
 type Releases interface {
 	Latest(repo string, prerelease bool) (*github.Release, error)
 	Download(a github.Asset, dir string) (string, error)
+	Search(words string) ([]github.Repo, error)
 }
 
 // Asker asks the user to pick an answer, returning its index. When nobody can answer (a scheduled task,

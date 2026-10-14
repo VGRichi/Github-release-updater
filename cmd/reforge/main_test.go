@@ -14,9 +14,13 @@ import (
 	"github.com/VGRichi/Reforge/internal/system"
 )
 
-type fakeReleases struct{ release *github.Release }
+type fakeReleases struct {
+	release *github.Release
+	repos   []github.Repo
+}
 
 func (f *fakeReleases) Latest(string, bool) (*github.Release, error) { return f.release, nil }
+func (f *fakeReleases) Search(string) ([]github.Repo, error)         { return f.repos, nil }
 func (f *fakeReleases) Download(a github.Asset, dir string) (string, error) {
 	file := filepath.Join(dir, a.Name)
 	return file, os.WriteFile(file, []byte("bytes"), 0o644)
@@ -40,7 +44,7 @@ func useFakes(t *testing.T, rel *github.Release, programs ...system.Program) str
 	downloadsFolder = func() string { return downloads }
 	newEngine = func(c *cli) *core.Engine {
 		return &core.Engine{
-			GitHub: &fakeReleases{rel}, System: &fakeSystem{programs}, Ask: c, Arch: "amd64",
+			GitHub: &fakeReleases{release: rel}, System: &fakeSystem{programs}, Ask: c, Arch: "amd64",
 			WorkRoot: t.TempDir(), BackupsToKeep: 3, Progress: c.progress, Verbose: c.detail, Warn: c.warn,
 		}
 	}
@@ -276,5 +280,34 @@ func TestParseFlagsAnywhere(t *testing.T) {
 	pos, err := parse(fs, []string{"a", "--json", "b"})
 	if err != nil || !*asJSON || strings.Join(pos, ",") != "a,b" {
 		t.Errorf("got %v %v %v", pos, *asJSON, err)
+	}
+}
+
+func TestAddByNameAsksAboutGitHubMatches(t *testing.T) {
+	useFakes(t, &github.Release{Tag: "v3.1.1", Assets: []github.Asset{{Name: "dxvk-3.1.1.tar.gz"}}})
+	repos := []github.Repo{{FullName: "ValveSoftware/dxvk", Stars: 488}, {FullName: "doitsujin/dxvk", Stars: 18285, Description: "Vulkan-based D3D"}}
+	realEngine := newEngine
+	newEngine = func(c *cli) *core.Engine {
+		e := realEngine(c)
+		e.GitHub.(*fakeReleases).repos = repos
+		return e
+	}
+
+	// The likeliest is asked about first (doitsujin/dxvk, more stars); someone answers No, then Yes
+	var out, errOut bytes.Buffer
+	c := newCLI(strings.NewReader("n\ny\n"), &out, &errOut)
+	c.interactive = true
+	repo, err := c.lookUp(configIn(t), "dxvk")
+	if err != nil || repo != "ValveSoftware/dxvk" {
+		t.Fatalf("got %q, %v", repo, err)
+	}
+	if q := errOut.String(); !strings.Contains(q, "Is it doitsujin/dxvk? ★ 18285, latest v3.1.1: Vulkan-based D3D") {
+		t.Errorf("questions: %q", q)
+	}
+
+	// Nobody to answer: the safe answer is No, asked once
+	code, _, errOut2 := reforge(t, configIn(t), "add", "dxvk")
+	if code != 1 || strings.Count(errOut2, "can't ask here") != 1 || !strings.Contains(errOut2, "add it as owner/repo") {
+		t.Errorf("%d %q", code, errOut2)
 	}
 }

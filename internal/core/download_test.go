@@ -204,3 +204,40 @@ func TestInstalledFrom(t *testing.T) {
 		}
 	}
 }
+
+func TestLocalRepo(t *testing.T) {
+	te, dir, add := downloadsCase(t)
+	te.sys.programs = append(te.sys.programs, system.Program{Name: "PhotoCraft 1.0", Links: []string{"https://github.com/storytold/photocraft"}})
+	add("Mods/Optiscaler_0.9.4.7z", "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4", 0)
+	tests := map[string]string{
+		"photocraft": "storytold/photocraft",  // an installed app that links to GitHub
+		"optiscaler": "optiscaler/OptiScaler", // a download from GitHub
+		"gridcraft":  "",                      // installed, but no GitHub link
+		"dxvk":       "",                      // nothing on this PC
+	}
+	for name, want := range tests {
+		if got, err := te.LocalRepo(name, []string{dir}); err != nil || got != want {
+			t.Errorf("%s: got %q, %v", name, got, err)
+		}
+	}
+}
+
+func TestSearchReposRanksTheLikeliestFirst(t *testing.T) {
+	te := newEngine(t)
+	te.gh.repos = []github.Repo{
+		{FullName: "NVIDIAGameWorks/dxvk-remix", Stars: 430},
+		{FullName: "Sporif/dxvk-async", Stars: 829, Archived: true},
+		{FullName: "ValveSoftware/dxvk", Stars: 488},
+		{FullName: "doitsujin/dxvk", Stars: 18285},
+		{FullName: "jp7677/dxvk-nvapi", Stars: 663},
+	}
+	repos, _ := te.SearchRepos("dxvk")
+	var got []string
+	for _, r := range repos {
+		got = append(got, r.FullName)
+	}
+	want := "doitsujin/dxvk ValveSoftware/dxvk jp7677/dxvk-nvapi NVIDIAGameWorks/dxvk-remix Sporif/dxvk-async"
+	if strings.Join(got, " ") != want {
+		t.Errorf("got  %v\nwant %s", got, want)
+	}
+}

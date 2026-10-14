@@ -75,9 +75,18 @@ func runAdd(c *cli, args []string) error {
 		fs.Usage()
 		return errUsage
 	}
+	apps, path, err := c.load()
+	if err != nil {
+		return err
+	}
 	repo, ok := github.ParseRepo(pos[0])
-	if !ok {
+	if !ok && strings.Contains(pos[0], "/") {
 		return fmt.Errorf("'%s' isn't a GitHub repository. Use owner/repo, for example storytold/photocraft", pos[0])
+	}
+	if !ok { // just a name, like dxvk
+		if repo, err = c.lookUp(path, pos[0]); err != nil {
+			return err
+		}
 	}
 	app := &applist.App{
 		Name: *name, Repository: repo, Subfolder: *subfolder, Pattern: *pattern, SilentArgs: *silentArgs,
@@ -85,10 +94,6 @@ func runAdd(c *cli, args []string) error {
 	}
 	if len(rename) > 0 {
 		app.Rename = rename
-	}
-	apps, path, err := c.load()
-	if err != nil {
-		return err
 	}
 
 	switch {
@@ -145,6 +150,50 @@ func runAdd(c *cli, args []string) error {
 		fmt.Fprintf(c.stdout, "Tracking %s (%s): updated with its installer\n", app.Name, repo)
 	}
 	return nil
+}
+
+// lookUp finds the repository for a name: on this PC first (an installed app linking to GitHub, or a
+// download from GitHub), then by searching GitHub, asking about the likeliest matches one at a time.
+// Matches without releases are skipped, since there'd be nothing to track.
+func (c *cli) lookUp(listPath, name string) (string, error) {
+	e := c.engine(listPath)
+	repo, err := e.LocalRepo(name, []string{downloadsFolder()})
+	if err != nil || repo != "" {
+		if repo != "" {
+			fmt.Fprintf(c.stderr, "Found on this PC: %s\n", repo)
+		}
+		return repo, err
+	}
+	fmt.Fprintf(c.stderr, "Searching GitHub for '%s'...\n", name)
+	repos, err := e.SearchRepos(name)
+	if err != nil {
+		return "", err
+	}
+	asked := 0
+	for _, r := range repos {
+		release, err := e.GitHub.Latest(r.FullName, false)
+		if err != nil || release == nil {
+			continue
+		}
+		about := fmt.Sprintf("★ %d, latest %s", r.Stars, release.Tag)
+		if r.Description != "" {
+			about += ": " + shorten(r.Description, 70)
+		}
+		if c.Choose(fmt.Sprintf("Is it %s? %s", r.FullName, about), []string{"Yes", "No"}, 1) == 0 {
+			return r.FullName, nil
+		}
+		if asked++; asked == 5 || !c.interactive {
+			break
+		}
+	}
+	return "", fmt.Errorf("no repository chosen for '%s'. If you know it, add it as owner/repo, like reforge add doitsujin/dxvk", name)
+}
+
+func shorten(s string, n int) string {
+	if r := []rune(strings.TrimSpace(s)); len(r) > n {
+		return string(r[:n-1]) + "…"
+	}
+	return strings.TrimSpace(s)
 }
 
 // absFolder is the full path of an existing folder.

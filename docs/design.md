@@ -48,6 +48,9 @@ from `GITHUB_TOKEN` or `GH_TOKEN` only, never a flag, so it doesn't end up in sh
 - **`reforge add` works out the kind**: installed + installer in the release = installer app; a release
   of archives = download, found in Downloads (two levels deep) with the version read from names; a
   folder argument = download there; `--dest` = copied into folders.
+- **`reforge add <name>`**: the repository comes from this PC (an installed app linking to GitHub, a
+  download's note), else from GitHub's search, ranked exact name first, then stars, archived last;
+  each match with releases is asked about (Yes/No, up to 5; nobody to ask = No).
 - **Double-click** (Windows): shows the help and turns the window into a PowerShell prompt, instead of
   a window that closes at once.
 

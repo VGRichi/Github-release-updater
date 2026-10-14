@@ -21,7 +21,8 @@ type fakeGitHub struct {
 	err       error
 	payload   []byte
 	downloads []string
-	latest    []bool // the prerelease flag of each Latest call
+	latest    []bool        // the prerelease flag of each Latest call
+	repos     []github.Repo // what Search finds
 }
 
 func (f *fakeGitHub) Latest(repo string, prerelease bool) (*github.Release, error) {
@@ -168,3 +169,5 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(data)
 }
+
+func (f *fakeGitHub) Search(words string) ([]github.Repo, error) { return f.repos, nil }

@@ -23,7 +23,7 @@ var version = "dev"
 const usage = `Usage: reforge <command> [arguments] [options]
 
 Commands:
-  add <owner/repo>       track an app, mod or tool you already have
+  add <name>             track an app, mod or tool you already have (a name or owner/repo)
   install <owner/repo>   download and install an app, and track it
   list [name...]         list what you track, and which have updates
   update [name...]       install the updates
@@ -41,7 +41,9 @@ var commands = map[string]func(*cli, []string) error{
 
 // help is each command's arguments and description, for 'reforge <command> --help'.
 var help = map[string][2]string{
-	"add": {"<owner/repo> [folder]", "Starts tracking an app, mod or tool you already have. Reforge works out which:\n" +
+	"add": {"<name or owner/repo> [folder]", "Starts tracking an app, mod or tool you already have. With just a name, Reforge looks on your\n" +
+		"PC (installed apps, downloads from GitHub), then searches GitHub and asks about each match.\n" +
+		"It works out which kind it is:\n" +
 		"  - an installed app is updated with its installer;\n" +
 		"  - a downloaded mod or tool (a .zip, .7z or .tar.gz) is kept up to date where you keep it. It's\n" +
 		"    looked for in your Downloads folder, or give the folder. New versions are downloaded there,\n" +
