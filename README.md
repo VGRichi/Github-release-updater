@@ -5,19 +5,49 @@
   </picture>
 </p>
 
-**Keeps apps and game mods from GitHub releases up to date**, the way winget does for everything else. One small program, nothing else to install.
+<p align="center">
+  <b>Download, install and update apps and game mods from GitHub releases.</b><br>
+  Like winget, for everything that's only on GitHub.
+</p>
 
-- **Updates installed apps** (`.msi` / `.exe`) silently, with the right installer for your PC (x64 or ARM64)
-- **Installs new apps** straight from a GitHub repository
-- **Updates game mods and tools** like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`) in your game folders, with backups, and without touching your settings
+<p align="center">
+  <a href="https://github.com/VGRichi/Reforge/releases/latest"><img src="https://img.shields.io/github/v/release/VGRichi/Reforge" alt="Latest release"></a>
+  <a href="https://github.com/VGRichi/Reforge/actions/workflows/test.yml"><img src="https://github.com/VGRichi/Reforge/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/VGRichi/Reforge" alt="MIT license"></a>
+</p>
+
+## Features
+
+- **Downloads and installs apps** straight from a GitHub repository's latest release
+- **Keeps them up to date**: installed apps (`.msi` / `.exe`) update silently, with the right installer for your PC (x64 or ARM64)
+- **Updates game mods and tools** like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`) in your game folders, with backups and without touching your settings
 - **Finds what you already have**: installed apps that link to GitHub, and GitHub downloads in your Downloads folder
 - **Verifies every download** against GitHub's SHA256 checksums, and never installs an unverified file without asking
+- **One small program**, nothing else to install
 
 Installer apps are Windows-only for now; game mods and tools work on Windows, macOS and Linux.
 
 ## Install
 
-**Windows** (PowerShell):
+Download the file for your system from the [latest release](https://github.com/VGRichi/Reforge/releases/latest), extract it, and put `reforge` in a folder on your `PATH`.
+
+| System | Download |
+|---|---|
+| Windows (x64) | [reforge_windows_amd64.zip](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_windows_amd64.zip) |
+| Windows (ARM) | [reforge_windows_arm64.zip](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_windows_arm64.zip) |
+| macOS (Apple Silicon) | [reforge_darwin_arm64.tar.gz](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_darwin_arm64.tar.gz) |
+| macOS (Intel) | [reforge_darwin_amd64.tar.gz](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_darwin_amd64.tar.gz) |
+| Linux (x64) | [reforge_linux_amd64.tar.gz](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linux_amd64.tar.gz) |
+| Linux (ARM) | [reforge_linux_arm64.tar.gz](https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linux_arm64.tar.gz) |
+
+Each release has a `checksums.txt` with the SHA256 of every file. On an ARM PC, use the ARM download so Reforge picks ARM installers.
+
+**With Go:** `go install github.com/VGRichi/Reforge/cmd/reforge@latest`
+
+<details>
+<summary>Install from the terminal</summary>
+
+Windows (PowerShell), into your user's programs folder and `PATH`:
 
 ```powershell
 $dir = "$env:LOCALAPPDATA\Programs\Reforge"
@@ -26,23 +56,37 @@ Expand-Archive "$env:TEMP\reforge.zip" $dir -Force
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dir", 'User')
 ```
 
-**macOS / Linux**: `curl -L https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linux_amd64.tar.gz | tar -xz -C ~/.local/bin reforge` (use `darwin` for macOS and `arm64` for ARM).
+macOS and Linux (change `linux_amd64` to match your system):
 
-Or download a file from the [latest release](https://github.com/VGRichi/Reforge/releases/latest), or `go install github.com/VGRichi/Reforge/cmd/reforge@latest`.
-
-## Use
-
-```
-reforge find --add                                         pick from what you already have
-reforge add storytold/photocraft --name PhotoCraft         track an installed app
-reforge install storytold/pdfcraft                         install a new app and track it
-reforge add doitsujin/dxvk --dest "D:\Games\Witcher 3\bin\x64" --subfolder x64   a game mod
-
-reforge update --dry-run                                   see what has updates
-reforge update                                             update everything
+```sh
+mkdir -p ~/.local/bin
+curl -L https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linux_amd64.tar.gz | tar -xz -C ~/.local/bin reforge
 ```
 
-`--name` is the app's name in **Settings → Apps → Installed apps**. `reforge list` shows what you track, and `reforge remove` stops tracking. Apps installed for all users need an administrator terminal.
+</details>
+
+## Usage
+
+```sh
+reforge find --add                                   # track apps you already have
+reforge add storytold/photocraft --name PhotoCraft   # track an installed app
+reforge install storytold/pdfcraft                   # download and install a new app, and track it
+reforge add doitsujin/dxvk --dest "D:\Games\Witcher 3\bin\x64" --subfolder x64   # a game mod
+
+reforge update --dry-run                             # see what has updates
+reforge update                                       # update everything
+```
+
+| Command | What it does |
+|---|---|
+| `reforge install <owner/repo>` | Download and install an app, and track it |
+| `reforge add <owner/repo>` | Track an app you already have, or a game mod or tool with `--dest` |
+| `reforge update [name...]` | Check for updates and install them (`--dry-run` to only check) |
+| `reforge find` | Find installed apps and downloads that come from GitHub |
+| `reforge list` | List what you track |
+| `reforge remove <name...>` | Stop tracking (doesn't uninstall) |
+
+`--name` is the app's name in **Settings → Apps → Installed apps**. Apps installed for all users need an administrator terminal. Every command has help: `reforge update --help`.
 
 | Option | Purpose |
 |---|---|
@@ -55,7 +99,7 @@ reforge update                                             update everything
 | `--allow-unverified` | Trust an app whose releases have no checksum |
 | `--json` | Machine-readable output, for scripts |
 
-Every command has help: `reforge update --help`. For more than GitHub's 60 checks an hour, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens) (no permissions needed).
+GitHub allows 60 checks an hour without signing in. For more, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens) (no permissions needed).
 
 ## Security
 
@@ -72,4 +116,4 @@ A checksum proves you got exactly the file on the release page, not that the rel
 
 ## License
 
-[MIT](LICENSE). Thanks to the Reddit commenters whose feedback shaped the security rules. Working on Reforge? See [CONTRIBUTING.md](CONTRIBUTING.md).
+[MIT](LICENSE). Thanks to the Reddit commenters whose feedback shaped the security rules. Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
