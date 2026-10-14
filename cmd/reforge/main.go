@@ -7,6 +7,7 @@ package main
 //go:generate go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64,arm64 --manifest cli --icon ../../assets/reforge-app-icon-512.png --product-name Reforge --file-description Reforge --original-filename reforge.exe --copyright "(c) 2026 VGRichi. MIT License." --product-version "$REFORGE_VERSION" --file-version "$REFORGE_VERSION"
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,9 +19,7 @@ import (
 // version is set when building a release: go build -ldflags "-X main.version=1.0.0"
 var version = "dev"
 
-const usage = `Reforge keeps apps and game mods from GitHub releases up to date.
-
-Usage: reforge <command> [arguments] [options]
+const usage = `Usage: reforge <command> [arguments] [options]
 
 Commands:
   add <owner/repo>       start tracking an app, or a tool with --dest
@@ -49,13 +48,23 @@ var help = map[string][2]string{
 	"remove":  {"<name...>", "Stops tracking apps. They stay installed."},
 }
 
+// color is whether the help screen's banner is in colour.
+var color bool
+
 func main() {
+	color = terminalColors(os.Stdout)
+	if len(os.Args) == 1 && startedByDoubleClick() {
+		// Opened from Explorer: without this, the window would show the help and close at once
+		fmt.Print(banner(version, color), doubleClickHelp)
+		bufio.NewReader(os.Stdin).ReadString('\n')
+		return
+	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(stdout, usage)
+		fmt.Fprint(stdout, banner(version, color), "\n", usage)
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" {
