@@ -39,8 +39,19 @@ func TestDownloadOriginReadsTheMarkOfTheWeb(t *testing.T) {
 	}
 }
 
+// fakeInstaller builds testdata/fakeinstaller: a windowed program like a real installer. Console
+// programs (cmd, PowerShell) made these tests flaky: Windows can send their window a close event.
+func fakeInstaller(t *testing.T) string {
+	t.Helper()
+	exe := filepath.Join(t.TempDir(), "fakeinstaller.exe")
+	if out, err := exec.Command("go", "build", "-ldflags=-H=windowsgui", "-o", exe, "./testdata/fakeinstaller").CombinedOutput(); err != nil {
+		t.Fatalf("building the fake installer: %v\n%s", err, out)
+	}
+	return exe
+}
+
 func TestRunInstallerReturnsTheExitCode(t *testing.T) {
-	code, err := New().RunInstaller(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"), "/c exit 7")
+	code, err := New().RunInstaller(fakeInstaller(t), "exit 7")
 	if err != nil || code != 7 {
 		t.Fatalf("got %d, %v", code, err)
 	}
@@ -49,9 +60,9 @@ func TestRunInstallerReturnsTheExitCode(t *testing.T) {
 func TestRunInstallerDoesNotWaitForProgramsItStarts(t *testing.T) {
 	// The "installer" starts a long-running program (like an app opened after setup) and exits
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	script := `$c = Start-Process powershell.exe -ArgumentList '-NoProfile','-Command','Start-Sleep 60' -WindowStyle Hidden -PassThru; Set-Content -LiteralPath '` + pidFile + `' $c.Id; exit 3`
+	installer := fakeInstaller(t)
 	start := time.Now()
-	code, err := New().RunInstaller("powershell.exe", `-NoProfile -WindowStyle Hidden -Command "`+script+`"`)
+	code, err := New().RunInstaller(installer, `app "`+pidFile+`"`)
 	if data, readErr := os.ReadFile(pidFile); readErr == nil {
 		pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
 		if p, findErr := os.FindProcess(pid); findErr == nil {
