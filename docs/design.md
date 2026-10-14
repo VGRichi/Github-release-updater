@@ -1,8 +1,12 @@
 # Reforge in Go: design note
 
-Reforge 1.0 is a rewrite of the PowerShell module (GitHubAppUpdater 1–2, Reforge 3 unreleased) as a
+Reforge 1.1 is a rewrite of the PowerShell module (GitHubAppUpdater 1–2, Reforge 3 unreleased) as a
 single program, `reforge`, so it can run natively on Windows, macOS and Linux. Windows comes first, with
 the same behaviour as the module; macOS and Linux follow.
+
+It starts at 1.1.0, not 1.0.0: Go's module mirror (proxy.golang.org) permanently keeps the old v1.0.0
+and v2.0.0 tags (the PowerShell versions), so reusing v1.0.0 would make `go install ...@latest` fetch
+the old script. Never reuse a deleted version tag.
 
 ## Commands
 
