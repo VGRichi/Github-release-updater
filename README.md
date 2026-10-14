@@ -21,7 +21,8 @@
 
 - **Downloads and installs apps** straight from a GitHub repository's latest release
 - **Keeps them up to date**: installed apps (`.msi` / `.exe`) update silently, with the right installer for your PC (x64 or ARM64)
-- **Updates game mods and tools** like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`) in your game folders, with backups and without touching your settings
+- **Keeps downloaded mods and tools up to date**, like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`): new versions are downloaded next to the old ones, and extracted too if you extracted the old one
+- **Can also copy them into your game folders** on every update, with backups and without touching your settings
 - **Finds what you already have**: installed apps that link to GitHub, and GitHub downloads in your Downloads folder
 - **Verifies every download** against GitHub's SHA256 checksums and installers' digital signatures, and never installs an unverified file without asking
 - **One small program**, nothing else to install
@@ -69,38 +70,17 @@ curl -L https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linu
 ## Usage
 
 ```sh
-reforge find --add                                   # track apps you already have
-reforge add storytold/photocraft --name PhotoCraft   # track an installed app
-reforge install storytold/pdfcraft                   # download and install a new app, and track it
-reforge add doitsujin/dxvk --dest "D:\Games\Witcher 3\bin\x64" --subfolder x64   # a game mod
-
-reforge list                                         # what you track, and which have updates
-reforge update                                       # install the updates
+reforge install storytold/pdfcraft    # download and install an app, and track it
+reforge add doitsujin/dxvk            # track an app, mod or tool you already have
+reforge find --add                    # find what you already have, and pick what to track
+reforge list                          # what you track, and which have updates
+reforge update                        # install the updates
+reforge remove dxvk                   # stop tracking (doesn't uninstall)
 ```
 
-| Command | What it does |
-|---|---|
-| `reforge install <owner/repo>` | Download and install an app, and track it |
-| `reforge add <owner/repo>` | Track an app you already have, or a game mod or tool with `--dest` |
-| `reforge list [name...]` | Show what you track: installed and latest versions, folders, and which have updates |
-| `reforge update [name...]` | Install the updates |
-| `reforge find` | Find installed apps and downloads that come from GitHub |
-| `reforge remove <name...>` | Stop tracking (doesn't uninstall) |
+`reforge add` works out what you're tracking. An installed app is updated with its installer. A downloaded mod or tool, like DXVK or OptiScaler, is kept up to date where you keep it (it's found in your Downloads folder): new versions are downloaded next to the old ones, and extracted too if you extracted the old one. If you keep it elsewhere, give the folder: `reforge add doitsujin/dxvk D:\Mods`. To have its files copied into a game folder on every update instead, use `--dest "D:\Games\Witcher 3\bin\x64"`.
 
-`--name` is the app's name in **Settings → Apps → Installed apps**. Apps installed for all users need an administrator terminal. Every command has help: `reforge update --help`.
-
-| Option | Purpose |
-|---|---|
-| `--subfolder` `--include` | Copy one folder from the archive, or only matching files (`'*.dll'`) |
-| `--rename` | Rename a file while copying (`OptiScaler.dll=dxgi.dll`) |
-| `--keep` | Never overwrite these files, like your settings (`'*.ini'`) |
-| `--pattern` | Pick the release file yourself (`'*win-x64.msi'`) |
-| `--silent-args` | Silent-install switches for an installer that isn't recognised |
-| `--prerelease` | Follow beta releases |
-| `--allow-unverified` | Trust an app whose releases have no checksum |
-| `--json` | Machine-readable output, for scripts |
-
-GitHub allows 60 checks an hour without signing in. For more, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens) (no permissions needed).
+Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. For more than GitHub's 60 checks an hour, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens) (no permissions needed).
 
 ## Security
 
@@ -115,7 +95,7 @@ A checksum proves you got exactly the file on the release page, and a signature 
 ## Limitations
 
 - Versions are compared by number, so `1.2.0-beta3` → `1.2.0-beta4` isn't seen as an update.
-- Game mods and tools aren't tracked by the OS, so their first update installs the latest release.
+- Mods and tools copied into game folders (`--dest`) aren't tracked by the OS, so their first update installs the latest release.
 
 ## License
 

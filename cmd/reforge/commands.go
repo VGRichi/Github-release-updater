@@ -17,6 +17,9 @@ import (
 	"github.com/VGRichi/Reforge/internal/wildcard"
 )
 
+// downloadsFolder is where add and find look for downloads; tests replace it.
+var downloadsFolder = system.DownloadsFolder
+
 // newEngine connects the engine to the real GitHub and OS; tests replace it.
 var newEngine = func(c *cli) *core.Engine {
 	token := os.Getenv("GITHUB_TOKEN")
@@ -51,14 +54,14 @@ func (c *cli) load() ([]*applist.App, string, error) {
 
 func runAdd(c *cli, args []string) error {
 	fs := c.flags("add")
-	name := fs.String("name", "", "the app's name as shown in Installed apps (a part is fine); defaults to the repository name")
+	name := fs.String("name", "", "the app's name as shown in Installed apps (a part is fine); found for you when it's installed")
 	var dest, include, keep multi
 	rename := renames{}
-	fs.Var(&dest, "dest", "archive tools: a folder the files go into (give it more than once for several)")
-	subfolder := fs.String("subfolder", "", "archive tools: copy one folder from inside the archive, like x64")
-	fs.Var(&include, "include", `archive tools: only copy matching files, like '*.dll' or 'bin\*'`)
-	fs.Var(&keep, "keep", "archive tools: files that are added if missing but never overwritten, like '*.ini'")
-	fs.Var(rename, "rename", "archive tools: rename a file while copying, like OptiScaler.dll=dxgi.dll")
+	fs.Var(&dest, "dest", "copy the release's files into this folder on every update, like a game's folder (more than once for several)")
+	subfolder := fs.String("subfolder", "", "with --dest: copy one folder from inside the archive, like x64")
+	fs.Var(&include, "include", `with --dest: only copy matching files, like '*.dll' or 'bin\*'`)
+	fs.Var(&keep, "keep", "with --dest: files that are added if missing but never overwritten, like '*.ini'")
+	fs.Var(rename, "rename", "with --dest: rename a file while copying, like OptiScaler.dll=dxgi.dll")
 	pattern := fs.String("pattern", "", "pick the release file yourself, like '*win-x64.msi'")
 	silentArgs := fs.String("silent-args", "", "silent-install arguments for an installer that isn't recognised")
 	prerelease := fs.Bool("prerelease", false, "follow beta releases")
@@ -68,7 +71,7 @@ func runAdd(c *cli, args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(pos) != 1 {
+	if len(pos) == 0 || len(pos) > 2 || (len(pos) == 2 && len(dest) > 0) {
 		fs.Usage()
 		return errUsage
 	}
@@ -80,35 +83,47 @@ func runAdd(c *cli, args []string) error {
 		Name: *name, Repository: repo, Subfolder: *subfolder, Pattern: *pattern, SilentArgs: *silentArgs,
 		Include: applist.Strings(include), Keep: applist.Strings(keep), Prerelease: *prerelease, AllowUnverified: *trusted,
 	}
-	if app.Name == "" {
-		app.Name = repo[strings.LastIndex(repo, "/")+1:]
-	}
 	if len(rename) > 0 {
 		app.Rename = rename
 	}
-	for _, d := range dest {
-		abs, err := filepath.Abs(d)
-		if info, statErr := os.Stat(abs); err != nil || statErr != nil || !info.IsDir() {
-			return fmt.Errorf("folder not found: %s", d)
-		}
-		app.Destination = append(app.Destination, abs)
-	}
-	if len(app.Destination) > 0 {
-		app.Type = "archive"
-	}
-
 	apps, path, err := c.load()
 	if err != nil {
 		return err
 	}
+
+	switch {
+	case len(dest) > 0: // copied into folders on every update
+		for _, d := range dest {
+			abs, err := absFolder(d)
+			if err != nil {
+				return err
+			}
+			app.Destination = append(app.Destination, abs)
+		}
+		app.Type = "archive"
+	case len(pos) == 2: // a download kept in this folder; its names tell the version you have
+		abs, err := absFolder(pos[1])
+		if err != nil {
+			return err
+		}
+		app.Type, app.Folder, app.InstalledVersion = "download", abs, core.DetectVersion(abs, repo)
+	default: // worked out from what's installed and what the release has
+		if err := c.engine(path).Prepare(app, []string{downloadsFolder()}); err != nil {
+			return err
+		}
+	}
+	if app.Name == "" {
+		app.Name = repo[strings.LastIndex(repo, "/")+1:]
+	}
+
 	old := applist.Find(apps, app.Name)
 	if old != nil && !*force {
 		return fmt.Errorf("'%s' is already in the list. Use a different --name, or --force to replace it", app.Name)
 	}
 	if old != nil {
 		if strings.EqualFold(old.Repository, repo) { // replacing the same repository: keep what was learned
-			app.HadDigest = old.HadDigest
-			if app.IsArchive() {
+			app.HadDigest, app.Publisher = old.HadDigest, old.Publisher
+			if !app.IsInstaller() && app.InstalledVersion == "" {
 				app.InstalledVersion = old.InstalledVersion
 			}
 		}
@@ -119,8 +134,26 @@ func runAdd(c *cli, args []string) error {
 	if err := applist.Save(path, apps); err != nil {
 		return err
 	}
-	fmt.Fprintf(c.stdout, "Tracking %s (%s)\n", app.Name, repo)
+	switch {
+	case app.IsDownload() && app.InstalledVersion != "":
+		fmt.Fprintf(c.stdout, "Tracking %s (%s): you have %s in %s; updates are downloaded there\n", app.Name, repo, app.InstalledVersion, app.Folder)
+	case app.IsDownload():
+		fmt.Fprintf(c.stdout, "Tracking %s (%s): the next update downloads it into %s\n", app.Name, repo, app.Folder)
+	case app.IsArchive():
+		fmt.Fprintf(c.stdout, "Tracking %s (%s): updates are copied into %s\n", app.Name, repo, strings.Join(app.Destination, ", "))
+	default:
+		fmt.Fprintf(c.stdout, "Tracking %s (%s): updated with its installer\n", app.Name, repo)
+	}
 	return nil
+}
+
+// absFolder is the full path of an existing folder.
+func absFolder(dir string) (string, error) {
+	abs, err := filepath.Abs(dir)
+	if info, statErr := os.Stat(abs); err != nil || statErr != nil || !info.IsDir() {
+		return "", fmt.Errorf("folder not found: %s", dir)
+	}
+	return abs, nil
 }
 
 func runInstall(c *cli, args []string) error {
@@ -185,7 +218,7 @@ func runInstall(c *cli, args []string) error {
 // trackedAs returns the name an installer app from repo (or an app called name) is tracked as.
 func trackedAs(apps []*applist.App, repo, name string) string {
 	for _, a := range apps {
-		if (strings.EqualFold(a.Repository, repo) && !a.IsArchive()) || (name != "" && strings.EqualFold(a.Name, name)) {
+		if (strings.EqualFold(a.Repository, repo) && a.IsInstaller()) || (name != "" && strings.EqualFold(a.Name, name)) {
 			return a.Name
 		}
 	}
@@ -202,6 +235,7 @@ type listEntry struct {
 	Status      string   `json:"status"`
 	Note        string   `json:"note"`
 	Destination []string `json:"destination,omitempty"`
+	Folder      string   `json:"folder,omitempty"`
 	Publisher   string   `json:"publisher,omitempty"`
 	Trusted     bool     `json:"trusted"`
 }
@@ -232,8 +266,11 @@ func runList(c *cli, args []string) error {
 	var rows [][]string
 	for _, a := range apps {
 		le := listEntry{Name: a.Name, Repository: a.Repository, Type: "Installer", Destination: a.Destination, Publisher: a.Publisher, Trusted: a.AllowUnverified}
-		if a.IsArchive() {
+		switch {
+		case a.IsArchive():
 			le.Type, le.Installed = "Archive", a.InstalledVersion
+		case a.IsDownload():
+			le.Type, le.Installed, le.Folder = "Download", a.InstalledVersion, a.Folder
 		}
 		if e != nil {
 			r := e.Update(a)
@@ -241,7 +278,11 @@ func runList(c *cli, args []string) error {
 			c.failed = c.failed || r.Status == core.Failed
 		}
 		entries = append(entries, le)
-		rows = append(rows, []string{le.Name, le.Installed, le.Latest, statusText(le), strings.Join(le.Destination, "; ")})
+		folder := strings.Join(le.Destination, "; ")
+		if le.Folder != "" {
+			folder = le.Folder
+		}
+		rows = append(rows, []string{le.Name, le.Installed, le.Latest, statusText(le), folder})
 	}
 	if *asJSON {
 		return c.json(entries)
@@ -347,7 +388,7 @@ func runFind(c *cli, args []string) error {
 		return err
 	}
 	if len(folders) == 0 {
-		folders = []string{system.DownloadsFolder()}
+		folders = []string{downloadsFolder()}
 	}
 	apps, path, err := c.load()
 	if err != nil {
@@ -381,19 +422,22 @@ func runFind(c *cli, args []string) error {
 	}
 	c.table([]string{"Name", "Repository", "Version", "Type"}, rows)
 	if !*add {
-		fmt.Fprintln(c.stderr, "\nTrack one with: reforge add <repository> --name \"<name>\" (archive tools also need --dest <folder>), or run 'reforge find --add'.")
+		fmt.Fprintln(c.stderr, "\nTrack them with 'reforge find --add' (it asks about each one).")
 		return nil
 	}
 	added := 0
 	for _, f := range found {
+		question := fmt.Sprintf("Track %s (%s)?", f.Name, f.Repository)
+		app := &applist.App{Name: f.Name, Repository: f.Repository}
 		if f.Type == "Archive" {
-			fmt.Fprintf(c.stderr, "%s is an archive tool; track it for the folder you extracted it into: reforge add %s --name \"%s\" --dest \"<folder>\"\n", f.Name, f.Repository, f.Name)
+			// A download: new versions are downloaded into the same folder
+			question = fmt.Sprintf("Keep %s (%s) up to date in %s?", f.Name, f.Repository, f.Folder)
+			app.Type, app.Folder, app.InstalledVersion = "download", f.Folder, f.Version
+		}
+		if applist.Find(apps, f.Name) != nil || c.Choose(question, []string{"Yes", "No"}, 1) != 0 {
 			continue
 		}
-		if applist.Find(apps, f.Name) != nil || c.Choose(fmt.Sprintf("Track %s (%s)?", f.Name, f.Repository), []string{"Yes", "No"}, 1) != 0 {
-			continue
-		}
-		apps = append(apps, &applist.App{Name: f.Name, Repository: f.Repository})
+		apps = append(apps, app)
 		added++
 	}
 	if added > 0 {

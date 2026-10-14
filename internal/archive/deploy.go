@@ -142,6 +142,29 @@ func PruneBackups(appBackupDir string, keep int) {
 	}
 }
 
+// Move moves a file or folder, also to another drive (where a rename can't).
+func Move(src, dst string) error {
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		return copyFile(path, target)
+	})
+	if err != nil {
+		os.RemoveAll(dst)
+		return err
+	}
+	return os.RemoveAll(src)
+}
+
 func matchAny(patterns []string, names ...string) bool {
 	for _, p := range patterns {
 		for _, n := range names {
