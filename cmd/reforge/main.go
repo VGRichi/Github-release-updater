@@ -1,6 +1,11 @@
 // Command reforge keeps apps and tools from GitHub releases up to date.
 package main
 
+// reforge.exe's icon is in the rsrc_windows_*.syso files, which go build links in. Remake them after
+// changing the icon with: go generate ./cmd/reforge. Releases set REFORGE_VERSION, which also adds the
+// name, version and copyright shown in File > Properties > Details.
+//go:generate go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64,arm64 --manifest cli --icon ../../assets/reforge-app-icon-512.png --product-name Reforge --file-description Reforge --original-filename reforge.exe --copyright "(c) 2026 VGRichi. MIT License." --product-version "$REFORGE_VERSION" --file-version "$REFORGE_VERSION"
+
 import (
 	"errors"
 	"flag"

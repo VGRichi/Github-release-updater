@@ -38,6 +38,7 @@ jobs:
       - name: Build
         run: |
           version="${RELEASE_TAG#v}"
+          REFORGE_VERSION="$version" go generate ./cmd/reforge   # reforge.exe's icon and version (File > Properties)
           mkdir -p dist
           for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
             os="${target%/*}" arch="${target#*/}"
