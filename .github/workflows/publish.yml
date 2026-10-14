@@ -1,6 +1,5 @@
-# When you publish a release on GitHub, this attaches Reforge.zip to it, and
-# publishes to the PowerShell Gallery if a repository secret named PSGALLERY_API_KEY is set
-# (Settings > Secrets and variables > Actions).
+# When you publish a release on GitHub (tag like v1.0.0), this runs the tests, builds reforge for
+# Windows, macOS and Linux (x64 and ARM64), and attaches the files and their checksums to the release.
 name: Publish release
 
 on:
@@ -12,46 +11,51 @@ permissions:
 
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     env:
       # Passed through env, never pasted into scripts, so a tag name can't inject code
       RELEASE_TAG: ${{ github.event.release.tag_name }}
-      HAS_PSGALLERY_KEY: ${{ secrets.PSGALLERY_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
 
-      - name: Check the tag matches the module version
-        shell: pwsh
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check the tag is a version
         run: |
-          $tag = $env:RELEASE_TAG.TrimStart('v')
-          $manifest = Test-ModuleManifest ./Reforge/Reforge.psd1
-          if ($manifest.Version.ToString() -ne $tag) {
-            throw "Release tag v$tag doesn't match ModuleVersion $($manifest.Version) in Reforge.psd1"
-          }
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "Release tag $RELEASE_TAG isn't a version like v1.0.0" && exit 1
+          fi
 
-      - name: Run tests
-        shell: pwsh
-        run: ./build/invoke-tests.ps1 -CI
+      - name: Test
+        run: go test ./...
 
-      - name: Build help (Get-Help XML and Update-Help files)
-        shell: pwsh
-        run: ./build/build-help.ps1 -Cab
+      # File names have no version, so .../releases/latest/download/reforge_windows_amd64.zip always works
+      - name: Build
+        run: |
+          version="${RELEASE_TAG#v}"
+          REFORGE_VERSION="$version" go generate ./cmd/reforge   # reforge.exe's icon and version (File > Properties)
+          mkdir -p dist
+          for target in windows/amd64 windows/arm64 linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${target%/*}" arch="${target#*/}"
+            name="reforge_${os}_${arch}"
+            exe=reforge; [ "$os" = windows ] && exe=reforge.exe
+            mkdir -p "build/$name"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$version" -o "build/$name/$exe" ./cmd/reforge
+            cp LICENSE README.md "build/$name/"
+            if [ "$os" = windows ]; then
+              (cd "build/$name" && zip -q "../../dist/$name.zip" *)
+            else
+              tar -czf "dist/$name.tar.gz" -C "build/$name" .
+            fi
+          done
+          (cd dist && sha256sum * > checksums.txt)
 
-      - name: Attach module zip and Update-Help files to the release
-        shell: pwsh
+      - name: Attach the files to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          Compress-Archive -Path ./Reforge -DestinationPath ./Reforge.zip
-          $helpFiles = (Get-ChildItem ./out/help -File).FullName
-          gh release upload $env:RELEASE_TAG ./Reforge.zip $helpFiles --clobber --repo $env:GITHUB_REPOSITORY
-
-      - name: Publish to PowerShell Gallery
-        if: ${{ env.HAS_PSGALLERY_KEY == 'true' }}
-        shell: pwsh
-        env:
-          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}   # only this step sees the key
-        run: Publish-PSResource -Path ./Reforge -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
+        run: gh release upload "$RELEASE_TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"

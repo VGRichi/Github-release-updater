@@ -1,0 +1,146 @@
+package system
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
+)
+
+type windowsSystem struct{}
+
+// New returns the System for this OS.
+func New() System { return windowsSystem{} }
+
+var uninstallKeys = []struct {
+	root    registry.Key
+	rootStr string
+	path    string
+	perUser bool
+}{
+	{registry.CURRENT_USER, `HKCU`, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, true},
+	{registry.LOCAL_MACHINE, `HKLM`, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, false},
+	{registry.LOCAL_MACHINE, `HKLM`, `Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, false},
+}
+
+// Programs reads Installed apps from the three uninstall keys, skipping hidden system components.
+func (windowsSystem) Programs() ([]Program, error) {
+	var programs []Program
+	for _, u := range uninstallKeys {
+		parent, err := registry.OpenKey(u.root, u.path, registry.ENUMERATE_SUB_KEYS|registry.WOW64_64KEY)
+		if err != nil {
+			continue
+		}
+		names, _ := parent.ReadSubKeyNames(-1)
+		parent.Close()
+		for _, name := range names {
+			k, err := registry.OpenKey(u.root, u.path+`\`+name, registry.QUERY_VALUE|registry.WOW64_64KEY)
+			if err != nil {
+				continue
+			}
+			p := Program{Key: u.rootStr + `\` + u.path + `\` + name, PerUser: u.perUser}
+			p.Name, _, _ = k.GetStringValue("DisplayName")
+			p.Version, _, _ = k.GetStringValue("DisplayVersion")
+			hidden, _, _ := k.GetIntegerValue("SystemComponent")
+			msi, _, _ := k.GetIntegerValue("WindowsInstaller")
+			p.MSI = msi == 1
+			for _, v := range []string{"URLInfoAbout", "URLUpdateInfo", "HelpLink"} {
+				if s, _, err := k.GetStringValue(v); err == nil && s != "" {
+					p.Links = append(p.Links, s)
+				}
+			}
+			k.Close()
+			if p.Name != "" && hidden == 0 {
+				programs = append(programs, p)
+			}
+		}
+	}
+	return programs, nil
+}
+
+type shellExecuteInfo struct {
+	size          uint32
+	mask          uint32
+	hwnd          windows.Handle
+	verb          *uint16
+	file          *uint16
+	parameters    *uint16
+	directory     *uint16
+	show          int32
+	instApp       windows.Handle
+	idList        uintptr
+	class         *uint16
+	keyClass      windows.Handle
+	hotKey        uint32
+	iconOrMonitor windows.Handle
+	process       windows.Handle
+}
+
+var shellExecuteEx = windows.NewLazySystemDLL("shell32.dll").NewProc("ShellExecuteExW")
+
+// RunInstaller starts the installer the way Explorer would, so one that needs admin rights shows the
+// admin prompt, and waits for that one process: an installer that opens the app when it's done
+// doesn't make Reforge wait until the app is closed.
+func (windowsSystem) RunInstaller(file, args string) (int, error) {
+	const seeMaskNoCloseProcess, seeMaskNoAsync, swShowNormal = 0x40, 0x100, 1
+	info := shellExecuteInfo{mask: seeMaskNoCloseProcess | seeMaskNoAsync, show: swShowNormal}
+	info.size = uint32(unsafe.Sizeof(info))
+	info.file, _ = windows.UTF16PtrFromString(file)
+	if args != "" {
+		info.parameters, _ = windows.UTF16PtrFromString(args)
+	}
+	if ok, _, err := shellExecuteEx.Call(uintptr(unsafe.Pointer(&info))); ok == 0 {
+		if errors.Is(err, windows.ERROR_CANCELLED) {
+			return 0, errors.New("the admin prompt was declined")
+		}
+		return 0, fmt.Errorf("couldn't start the installer: %w", err)
+	}
+	if info.process == 0 {
+		return 0, nil
+	}
+	defer windows.CloseHandle(info.process)
+	if _, err := windows.WaitForSingleObject(info.process, windows.INFINITE); err != nil {
+		return 0, err
+	}
+	var code uint32
+	if err := windows.GetExitCodeProcess(info.process, &code); err != nil {
+		return 0, err
+	}
+	return int(code), nil
+}
+
+func (windowsSystem) IsAdmin() bool { return windows.GetCurrentProcessToken().IsElevated() }
+
+// DownloadsFolder asks Windows where Downloads is, since it can be moved.
+func DownloadsFolder() string {
+	if k, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders`, registry.QUERY_VALUE); err == nil {
+		defer k.Close()
+		if dir, _, err := k.GetStringValue("{374DE290-123F-4565-9164-39C4925E467B}"); err == nil && dir != "" {
+			return dir
+		}
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Downloads")
+}
+
+// DownloadOrigin reads the file's Zone.Identifier stream (the "Mark of the Web").
+func (windowsSystem) DownloadOrigin(file string) string {
+	data, err := os.ReadFile(file + ":Zone.Identifier")
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func (windowsSystem) WingetPackages() []Package {
+	out, err := exec.Command("winget", "list", "--source", "winget", "--disable-interactivity", "--accept-source-agreements").Output()
+	if err != nil && len(out) == 0 {
+		return nil
+	}
+	return parseWingetList(string(out))
+}
