@@ -183,6 +183,14 @@ func (e *Engine) installAsset(app *applist.App, asset *github.Asset, r *Result, 
 	if err != nil {
 		return err
 	}
+	signer, ok, err := e.checkSigner(app, asset, file)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		r.Status, r.Note = Skipped, "Signature changed since earlier releases; not installed"
+		return nil
+	}
 	e.progress("Installing %s", asset.Name)
 	var code int
 	if strings.HasSuffix(strings.ToLower(file), ".msi") {
@@ -202,19 +210,50 @@ func (e *Engine) installAsset(app *applist.App, asset *github.Asset, r *Result, 
 	}
 	switch code {
 	case 0, 3010, 1641: // 3010 and 1641: done, restart needed
-		r.Status = done
-		switch {
-		case code != 0:
-			r.Note = "Restart needed to finish"
-		case asset.Digest != "":
+		r.Status, r.Note = done, "Unverified"
+		if asset.Digest != "" {
 			r.Note = "Checksum verified"
-		default:
-			r.Note = "Unverified"
+		}
+		if signer != "" {
+			r.Note += ", signed by " + signer
+		}
+		if code != 0 {
+			r.Note += ". Restart needed to finish"
 		}
 	default:
 		r.Status, r.Note = Failed, fmt.Sprintf("Installer exit code %d", code)
 	}
 	return nil
+}
+
+// checkSigner checks the installer's digital signature and remembers who signed the app. A broken
+// signature (a file changed after it was signed) installs nothing. A release signed by someone else
+// than earlier ones, or not signed when they were, is unusual (a hacked account can upload a release
+// with a valid checksum, but not with the developer's signature), so it asks first. Apps that were
+// never signed are installed as before.
+func (e *Engine) checkSigner(app *applist.App, asset *github.Asset, file string) (signer string, ok bool, err error) {
+	signer, err = e.System.Signer(file)
+	if err != nil {
+		return "", false, fmt.Errorf("%s: %v. Nothing was installed", asset.Name, err)
+	}
+	switch {
+	case signer == app.Publisher:
+	case app.Publisher == "":
+		app.Publisher = signer
+	default:
+		now := "isn't signed"
+		if signer != "" {
+			now = "is signed by " + signer
+		}
+		e.warn("%s: earlier releases were signed by %s, but %s %s. That is unusual; check the release page before installing.", app.Name, app.Publisher, asset.Name, now)
+		if e.Ask.Choose(fmt.Sprintf("Install %s anyway?", asset.Name), []string{"Yes", "No"}, 1) != 0 {
+			return signer, false, nil
+		}
+		if signer != "" {
+			app.Publisher = signer
+		}
+	}
+	return signer, true, nil
 }
 
 // silentArgs recognises common installer types from the first few MB of the file.

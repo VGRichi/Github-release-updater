@@ -28,6 +28,7 @@ type App struct {
 	Prerelease       bool              `json:"Prerelease,omitempty"`
 	AllowUnverified  bool              `json:"AllowUnverified,omitempty"`
 	HadDigest        bool              `json:"HadDigest,omitempty"`
+	Publisher        string            `json:"Publisher,omitempty"` // who signed its installers, once one was signed
 	InstalledVersion string            `json:"InstalledVersion,omitempty"`
 }
 

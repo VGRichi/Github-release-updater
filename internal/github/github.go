@@ -123,13 +123,18 @@ func (c *Client) Download(a Asset, dir string) (string, error) {
 		return "", err
 	}
 	hash := sha256.New()
-	_, err = io.Copy(io.MultiWriter(out, hash), resp.Body)
+	n, err := io.Copy(io.MultiWriter(out, hash), resp.Body)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
 	if err != nil {
 		os.Remove(file)
 		return "", fmt.Errorf("downloading %s: %w", a.Name, err)
+	}
+	// The size GitHub lists catches a cut-off or wrong download, even for files without a checksum
+	if a.Size > 0 && n != a.Size {
+		os.Remove(file)
+		return "", fmt.Errorf("%s is %d bytes, but GitHub lists %d; the download is broken. Nothing was installed", a.Name, n, a.Size)
 	}
 	if a.Digest != "" && !strings.EqualFold(a.Digest, "sha256:"+hex.EncodeToString(hash.Sum(nil))) {
 		os.Remove(file)

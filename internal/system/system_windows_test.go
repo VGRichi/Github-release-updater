@@ -2,6 +2,7 @@ package system
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -62,6 +63,32 @@ func TestRunInstallerDoesNotWaitForProgramsItStarts(t *testing.T) {
 	}
 	if time.Since(start) > 45*time.Second {
 		t.Fatal("waited for the program the installer started")
+	}
+}
+
+func TestSigner(t *testing.T) {
+	// PowerShell 7 is installed on GitHub's Windows machines, and signed by Microsoft
+	signed, err := exec.LookPath("pwsh.exe")
+	if err != nil {
+		t.Skip("pwsh.exe isn't installed")
+	}
+	if name, err := New().Signer(signed); err != nil || name != "Microsoft Corporation" {
+		t.Errorf("signed file: %q, %v", name, err)
+	}
+
+	unsigned := filepath.Join(t.TempDir(), "unsigned.exe")
+	os.WriteFile(unsigned, []byte("MZ not signed"), 0o644)
+	if name, err := New().Signer(unsigned); err != nil || name != "" {
+		t.Errorf("unsigned file: %q, %v", name, err)
+	}
+
+	// Changed after signing, like a tampered download
+	data, _ := os.ReadFile(signed)
+	data[len(data)/2]++
+	tampered := filepath.Join(t.TempDir(), "tampered.exe")
+	os.WriteFile(tampered, data, 0o644)
+	if name, err := New().Signer(tampered); err == nil || !strings.Contains(err.Error(), "isn't valid") {
+		t.Errorf("tampered file: %q, %v", name, err)
 	}
 }
 

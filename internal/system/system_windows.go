@@ -114,6 +114,82 @@ func (windowsSystem) RunInstaller(file, args string) (int, error) {
 	return int(code), nil
 }
 
+// Signer checks the file's Authenticode signature (what Windows shows as "Digital Signatures").
+// Revocation isn't checked online, so a check never waits on the network.
+func (windowsSystem) Signer(file string) (string, error) {
+	path, err := windows.UTF16PtrFromString(file)
+	if err != nil {
+		return "", err
+	}
+	data := &windows.WinTrustData{
+		Size:             uint32(unsafe.Sizeof(windows.WinTrustData{})),
+		UIChoice:         windows.WTD_UI_NONE,
+		RevocationChecks: windows.WTD_REVOKE_NONE,
+		UnionChoice:      windows.WTD_CHOICE_FILE,
+		StateAction:      windows.WTD_STATEACTION_VERIFY,
+		FileOrCatalogOrBlobOrSgnrOrCert: unsafe.Pointer(&windows.WinTrustFileInfo{
+			Size:     uint32(unsafe.Sizeof(windows.WinTrustFileInfo{})),
+			FilePath: path,
+		}),
+	}
+	verifyErr := windows.WinVerifyTrustEx(windows.InvalidHWND, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, data)
+	data.StateAction = windows.WTD_STATEACTION_CLOSE
+	windows.WinVerifyTrustEx(windows.InvalidHWND, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, data)
+	switch verifyErr {
+	case nil:
+		return signerName(path)
+	case windows.Errno(windows.TRUST_E_NOSIGNATURE), windows.Errno(windows.TRUST_E_SUBJECT_FORM_UNKNOWN), windows.Errno(windows.TRUST_E_PROVIDER_UNKNOWN):
+		return "", nil
+	}
+	return "", fmt.Errorf("its digital signature isn't valid (%v)", verifyErr)
+}
+
+var (
+	crypt32          = windows.NewLazySystemDLL("crypt32.dll")
+	cryptMsgGetParam = crypt32.NewProc("CryptMsgGetParam")
+	cryptMsgClose    = crypt32.NewProc("CryptMsgClose")
+)
+
+// signerName reads who signed the file: the signer's certificate, found by its issuer and serial number.
+func signerName(path *uint16) (string, error) {
+	var encoding, contentType, formatType uint32
+	var store, msg windows.Handle
+	if err := windows.CryptQueryObject(windows.CERT_QUERY_OBJECT_FILE, unsafe.Pointer(path),
+		windows.CERT_QUERY_CONTENT_FLAG_PKCS7_SIGNED_EMBED, windows.CERT_QUERY_FORMAT_FLAG_BINARY, 0,
+		&encoding, &contentType, &formatType, &store, &msg, nil); err != nil {
+		return "", err
+	}
+	defer windows.CertCloseStore(store, 0)
+	defer cryptMsgClose.Call(uintptr(msg))
+
+	const cmsgSignerInfoParam = 6
+	var size uint32
+	if ok, _, err := cryptMsgGetParam.Call(uintptr(msg), cmsgSignerInfoParam, 0, 0, uintptr(unsafe.Pointer(&size))); ok == 0 {
+		return "", err
+	}
+	buf := make([]byte, size)
+	if ok, _, err := cryptMsgGetParam.Call(uintptr(msg), cmsgSignerInfoParam, 0, uintptr(unsafe.Pointer(&buf[0])), uintptr(unsafe.Pointer(&size))); ok == 0 {
+		return "", err
+	}
+	// The start of CMSG_SIGNER_INFO
+	signer := (*struct {
+		Version      uint32
+		Issuer       windows.CertNameBlob
+		SerialNumber windows.CryptIntegerBlob
+	})(unsafe.Pointer(&buf[0]))
+	info := windows.CertInfo{Issuer: signer.Issuer, SerialNumber: signer.SerialNumber}
+	cert, err := windows.CertFindCertificateInStore(store, windows.X509_ASN_ENCODING|windows.PKCS_7_ASN_ENCODING, 0,
+		windows.CERT_FIND_SUBJECT_CERT, unsafe.Pointer(&info), nil)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CertFreeCertificateContext(cert)
+	n := windows.CertGetNameString(cert, windows.CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nil, nil, 0)
+	name := make([]uint16, n)
+	windows.CertGetNameString(cert, windows.CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nil, &name[0], n)
+	return windows.UTF16ToString(name), nil
+}
+
 func (windowsSystem) IsAdmin() bool { return windows.GetCurrentProcessToken().IsElevated() }
 
 // DownloadsFolder asks Windows where Downloads is, since it can be moved.

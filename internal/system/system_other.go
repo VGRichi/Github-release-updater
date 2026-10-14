@@ -20,6 +20,8 @@ func (otherSystem) RunInstaller(file, args string) (int, error) {
 	return 0, errors.New("installer apps aren't supported on this OS yet; archive tools are")
 }
 
+func (otherSystem) Signer(file string) (string, error) { return "", nil }
+
 func (otherSystem) IsAdmin() bool { return os.Geteuid() == 0 }
 
 // DownloadsFolder is ~/Downloads.

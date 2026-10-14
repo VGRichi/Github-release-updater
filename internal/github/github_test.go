@@ -118,6 +118,23 @@ func TestDownload(t *testing.T) {
 	}
 }
 
+func TestDownloadChecksTheSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("12345")) }))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client()}
+	if _, err := c.Download(Asset{Name: "a.zip", URL: srv.URL, Size: 5}, t.TempDir()); err != nil {
+		t.Fatalf("right size: %v", err)
+	}
+	dir := t.TempDir()
+	_, err := c.Download(Asset{Name: "a.zip", URL: srv.URL, Size: 9}, dir) // GitHub lists another size
+	if err == nil || !strings.Contains(err.Error(), "the download is broken") {
+		t.Fatalf("wrong size: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Error("a broken download must be deleted")
+	}
+}
+
 func TestParseRepo(t *testing.T) {
 	good := map[string]string{
 		"storytold/photocraft":                    "storytold/photocraft",
