@@ -91,7 +91,7 @@
         <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="True (ByPropertyName)" position="named" aliases="none">
           <maml:name>Include</maml:name>
           <maml:description>
-            <maml:para>Archive tools: only copy files matching these wildcards, for example '*.dll'. Matches file names or paths inside the archive ('bin*').</maml:para>
+            <maml:para>Archive tools: only copy files matching these wildcards, for example '*.dll'. Matches file names or paths inside the archive ('bin\*').</maml:para>
           </maml:description>
           <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
           <dev:type>
@@ -103,7 +103,7 @@
         <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="True (ByPropertyName)" position="named" aliases="none">
           <maml:name>Keep</maml:name>
           <maml:description>
-            <maml:para>Archive tools: files that are added if missing but never overwritten, like your settings files ('*.ini'). Matches file names or paths inside the archive ('config*').</maml:para>
+            <maml:para>Archive tools: files that are added if missing but never overwritten, like your settings files ('*.ini'). Matches file names or paths inside the archive ('config\*').</maml:para>
           </maml:description>
           <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
           <dev:type>
@@ -236,7 +236,7 @@
       <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="True (ByPropertyName)" position="named" aliases="none">
         <maml:name>Include</maml:name>
         <maml:description>
-          <maml:para>Archive tools: only copy files matching these wildcards, for example '*.dll'. Matches file names or paths inside the archive ('bin*').</maml:para>
+          <maml:para>Archive tools: only copy files matching these wildcards, for example '*.dll'. Matches file names or paths inside the archive ('bin\*').</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
         <dev:type>
@@ -248,7 +248,7 @@
       <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="True (ByPropertyName)" position="named" aliases="none">
         <maml:name>Keep</maml:name>
         <maml:description>
-          <maml:para>Archive tools: files that are added if missing but never overwritten, like your settings files ('*.ini'). Matches file names or paths inside the archive ('config*').</maml:para>
+          <maml:para>Archive tools: files that are added if missing but never overwritten, like your settings files ('*.ini'). Matches file names or paths inside the archive ('config\*').</maml:para>
         </maml:description>
         <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
         <dev:type>
