@@ -5,13 +5,13 @@
   </picture>
 </p>
 
-A PowerShell module that keeps Windows apps and tools installed from **GitHub releases** up to date, the way winget does for everything else.
+**Keeps Windows apps and game mods from GitHub releases up to date**, the way winget does for everything else.
 
-Many apps and game mods are only published on GitHub, so neither `winget upgrade` nor the WinGet PowerShell module can update them. Reforge remembers which repository each app came from, checks for new releases, verifies the downloads, and installs them.
-
-- **Installer apps** (`.msi` / `.exe`): compared with the version in Installed apps, updated silently, with the right installer for your PC (x64 or ARM64)
-- **Archive tools** (`.zip` / `.7z` / `.tar.gz`) like DXVK or OptiScaler: extracted into the folders you choose, with backups and protection for your settings files
-- **Verified downloads**: checked against GitHub's SHA256 checksums, and never installed unverified without asking ([Security](#security))
+- **Updates installed apps** (`.msi` / `.exe`) silently, with the right installer for your PC (x64 or ARM64)
+- **Installs new apps** straight from a GitHub repository
+- **Updates game mods and tools** like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`) in your game folders, with backups, and without touching your settings
+- **Finds what you already have**: installed apps that link to GitHub, and GitHub downloads in your Downloads folder
+- **Verifies every download** against GitHub's SHA256 checksums, and never installs an unverified file without asking
 
 ## Install
 
@@ -19,143 +19,48 @@ Many apps and game mods are only published on GitHub, so neither `winget upgrade
 Install-Module Reforge -Scope CurrentUser
 ```
 
-PowerShell will ask whether to trust the PowerShell Gallery; that's normal for any module. To read the code before installing: `Save-Module Reforge -Path .\review`.
+Or extract `Reforge.zip` from the [latest release](https://github.com/VGRichi/Reforge/releases/latest) into your Modules folder. Needs Windows 10 or 11, with PowerShell 7 or Windows PowerShell 5.1.
 
-**Without the PowerShell Gallery:** download `Reforge.zip` from the [latest release](https://github.com/VGRichi/Reforge/releases/latest) and extract it into your Modules folder. Or in PowerShell:
-
-```powershell
-$zip = "$env:TEMP\Reforge.zip"
-Invoke-WebRequest https://github.com/VGRichi/Reforge/releases/latest/download/Reforge.zip -OutFile $zip
-Unblock-File $zip
-Expand-Archive $zip -DestinationPath (Join-Path (Split-Path $PROFILE) 'Modules') -Force
-```
-
-Open a new PowerShell window and the commands are available. To update, run the same lines again.
-
-Requires Windows 10 or 11 with PowerShell 7 or Windows PowerShell 5.1.
-
-## Quick start
+## Use
 
 ```powershell
-Add-ReforgeApp -Repository storytold/photocraft -Name PhotoCraft   # track an app
-Update-ReforgeApp -WhatIf                                          # see what has updates
-Update-ReforgeApp                                                  # update 
+Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp     # pick from what you already have
+Add-ReforgeApp storytold/photocraft -Name PhotoCraft           # track an installed app
+Install-ReforgeApp storytold/pdfcraft                          # install a new app and track it
+Add-ReforgeApp doitsujin/dxvk -Destination 'D:\Games\Witcher 3\bin\x64' -Subfolder x64   # a game mod
+
+Update-ReforgeApp -WhatIf                                      # see what has updates
+Update-ReforgeApp                                              # update everything
 ```
 
-`-Name` is the app's name as shown in **Settings → Apps → Installed apps** (a partial name is fine).
-
-Not installed yet? `Install-ReforgeApp storytold/photocraft` installs the latest release (after asking) and starts tracking it.
-Apps installed for all users need PowerShell running as administrator to update. Apps installed only for your account, and archive tools in folders you own, don't.
-
-## Commands
-
-| Command | What it does |
-|---|---|
-| `Add-ReforgeApp` | Start tracking an app or tool |
-| `Install-ReforgeApp` | Install an app from GitHub for the first time, and track it |
-| `Get-ReforgeApp` | List what you're tracking |
-| `Update-ReforgeApp` | Check and install updates (`-WhatIf` to only check) |
-| `Find-ReforgeApp` | Find installed apps and downloaded tools that come from GitHub |
-| `Remove-ReforgeApp` | Stop tracking an app (doesn't uninstall it) |
-
-Every command has full help: `Get-Help Add-ReforgeApp -Examples`, or `-Online` to open its page on GitHub. Run `Update-Help -Module Reforge` to get the newest help without updating the module. The help pages also live in [docs/en-US](docs/en-US).
-
-### Adding apps
-
-```powershell
-# Named parameters
-Add-ReforgeApp -Repository storytold/photocraft -Name PhotoCraft
-
-# A hashtable (splatting)
-$app = @{ Repository = 'storytold/pdfcraft'; Name = 'PdfCraft' }
-Add-ReforgeApp @app
-
-# A CSV file with Repository and Name columns
-Import-Csv .\my-apps.csv | Add-ReforgeApp
-
-# Installed apps from GitHub (pick them in a window)
-Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp
-```
-
-### Archive tools (DXVK, OptiScaler, etc.)
-
-Give `-Destination`, the folder the files are extracted into:
-
-```powershell
-Add-ReforgeApp -Repository doitsujin/dxvk -Name 'DXVK (Witcher 3)' `
-    -Destination 'D:\Games\Witcher 3\bin\x64' -Subfolder x64
-
-Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' `
-    -Destination 'D:\Games\Cyberpunk 2077\bin\x64' -Rename @{ 'OptiScaler.dll' = 'dxgi.dll' } -Keep '*.ini'
-```
-
-Don't remember the repository? If the download is still in your Downloads folder, `Find-ReforgeApp` lists it (Type `Archive`), and you can pipe it into `Add-ReforgeApp -Destination '<folder>'`.
+`-Name` is the app's name in **Settings → Apps → Installed apps**. `Get-ReforgeApp` lists what you track, and `Remove-ReforgeApp` stops tracking. Apps installed for all users need PowerShell running as administrator.
 
 | Option | Purpose |
 |---|---|
-| `-Destination` | Folder(s) the files go into; several folders are allowed |
-| `-Subfolder` | Copy one folder from inside the archive (DXVK has `x64` and `x32`) |
-| `-Include` | Only copy matching files, by name or path, e.g. `'*.dll'` or `'bin\*'` |
-| `-Rename` | Rename files while copying |
-| `-Keep` | Files that are added if missing but never overwritten (your settings), by name or path, e.g. `'*.ini'` or `'config\*'` |
-
-Windows doesn't track these files, so the first update always installs the latest release. Replaced files are backed up to `%APPDATA%\Reforge\backups`; the backups of the last 3 updates per tool are kept. For `.7z` archives, install 7-Zip if extraction fails: `winget install --id 7zip.7zip`.
-
-> **Online games:** DLL mods like DXVK or OptiScaler can trigger anti-cheat systems. Only use them where that's safe.
-
-### Other options
-
-| Option | Purpose |
-|---|---|
-| `-Pattern '*win-x64.msi'` | Pick the release file yourself if the automatic choice is wrong |
-| `-SilentArgs '--silent'` | Silent-install arguments for an installer type that isn't detected |
+| `-Subfolder` `-Include` | Copy one folder from the archive, or only matching files (`'*.dll'`) |
+| `-Rename` | Rename files while copying (`@{ 'OptiScaler.dll' = 'dxgi.dll' }`) |
+| `-Keep` | Never overwrite these files, like your settings (`'*.ini'`) |
+| `-Pattern` | Pick the release file yourself (`'*win-x64.msi'`) |
+| `-SilentArgs` | Silent-install switches for an installer that isn't recognised |
 | `-Prerelease` | Follow beta releases |
-| `-AllowUnverified` | Trust an app whose releases have no checksum ([Security](#security)) |
-| `-Force` | Replace an app already in the list |
+| `-AllowUnverified` | Trust an app whose releases have no checksum |
+| `-Token` | More than GitHub's 60 checks an hour (or set `GITHUB_TOKEN`) |
 
-### GitHub rate limit
-
-GitHub allows about 60 checks per hour without signing in. For more, pass a [personal access token](https://github.com/settings/tokens) (no permissions needed):
-
-```powershell
-Update-ReforgeApp -Token (Read-Host -AsSecureString 'GitHub token')
-```
-
-or set it once in the `GITHUB_TOKEN` environment variable.
+Every command has full help: `Get-Help Update-ReforgeApp -Examples`.
 
 ## Security
 
-Installer apps install with admin rights and no installer window, so the module is strict about what it installs without asking:
+- **With a GitHub checksum:** verified, then installed. If it doesn't match, nothing is installed.
+- **Without one:** you're asked: **Yes**, **Always** (trust this app), or **No**. If the app's earlier releases had checksums, it always asks.
+- **Nobody to ask** (a scheduled task): the answer is No.
 
-| The downloaded file… | What happens |
-|---|---|
-| has a GitHub checksum | Verified, then installed. If it doesn't match, nothing is installed. |
-| has no checksum, but this app's **earlier releases had one** | Warning and a prompt (default: no). Trusting an app never skips this, because it's unusual. |
-| has no checksum, and never had one | Prompt: **Yes** = this time, **Always** = trust this app, **No** = skip |
-| has no checksum, app is trusted | Installed, noted as unverified in the results |
-
-`Update-ReforgeApp -WhatIf` shows which updates are unverified before anything runs.
-
-When nobody can answer a prompt (a scheduled task, or `pwsh -NonInteractive`), the answer is **No**: unverified downloads are skipped with a warning, and everything else updates normally. To update an app without a checksum unattended, trust it with `-AllowUnverified`.
-
-A checksum confirms you got **exactly the file on the release page**. It can't tell whether the release itself is trustworthy, for example if a developer's GitHub account were hacked. Only track apps from developers you trust.
-
-Thanks to the Reddit commenters whose feedback shaped the security rules and the move to a proper module.
+A checksum proves you got exactly the file on the release page, not that the release is trustworthy. Only track apps from developers you trust. DLL mods can trigger anti-cheat in online games.
 
 ## Limitations
 
-- Version checks use the numbers only, so `1.2.0-beta3` → `1.2.0-beta4` isn't detected as an update.
-- Apps that report a wrong version in Installed apps will be offered the same update every time. Remove them with `Remove-ReforgeApp`.
-- `Find-ReforgeApp` only finds apps that link to GitHub in their uninstall information, or whose GitHub download is still in your Downloads folder.
-
-## Publishing a new version (maintainers)
-
-1. Run the tests: `.\build\invoke-tests.ps1` (installs Pester 5 for the current user if needed). They also run on every push and pull request, and before publishing. Tests tagged `KnownBug` describe bugs that aren't fixed yet; `.\build\invoke-tests.ps1 -KnownBugs` runs only those.
-2. Update `ModuleVersion` in `Reforge/Reforge.psd1`, then commit and push.
-3. On GitHub, create a release with a matching tag (`v2.0.1` for version `2.0.1`).
-4. A GitHub Action attaches `Reforge.zip` to the release, and publishes to the PowerShell Gallery if a repository secret named `PSGALLERY_API_KEY` is set.
-5. Help lives in `docs/<language>/*.md`. After editing it, run `.\build\build-help.ps1` to rebuild the help, and commit both. To add a translation, copy `docs/en-US` to a folder like `docs/az-AZ`, translate the text (not the parameter names or code), and run the script.
+- Versions are compared by number, so `1.2.0-beta3` → `1.2.0-beta4` isn't seen as an update.
+- Game mods and tools aren't tracked by Windows, so their first update installs the latest release.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Thanks to the Reddit commenters whose feedback shaped the security rules. Working on Reforge? See [CONTRIBUTING.md](CONTRIBUTING.md).
