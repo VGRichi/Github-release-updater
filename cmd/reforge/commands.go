@@ -192,46 +192,81 @@ func trackedAs(apps []*applist.App, repo, name string) string {
 	return ""
 }
 
+// listEntry is one app in 'reforge list': what's tracked, and what checking its latest release found.
+type listEntry struct {
+	Name        string   `json:"name"`
+	Repository  string   `json:"repository"`
+	Type        string   `json:"type"`
+	Installed   string   `json:"installed"`
+	Latest      string   `json:"latest"`
+	Status      string   `json:"status"`
+	Note        string   `json:"note"`
+	Destination []string `json:"destination,omitempty"`
+	Publisher   string   `json:"publisher,omitempty"`
+	Trusted     bool     `json:"trusted"`
+}
+
 func runList(c *cli, args []string) error {
 	fs := c.flags("list")
+	offline := fs.Bool("offline", false, "only list, without checking GitHub for updates")
 	asJSON := fs.Bool("json", false, "print the list as JSON")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	apps, _, err := c.load()
+	apps, path, err := c.load()
 	if err != nil {
 		return err
 	}
 	apps = matching(apps, names)
-	if *asJSON {
-		if apps == nil {
-			apps = []*applist.App{}
-		}
-		return c.json(apps)
-	}
-	if len(apps) == 0 {
+	if len(apps) == 0 && !*asJSON {
 		fmt.Fprintln(c.stderr, "No apps tracked yet. Add one with 'reforge add', or find installed ones with 'reforge find'.")
 		return nil
 	}
+	var e *core.Engine
+	if !*offline {
+		e = c.engine(path)
+		e.DryRun = true // a check: nothing is downloaded, and list never saves the list
+	}
+	entries := []listEntry{}
 	var rows [][]string
 	for _, a := range apps {
-		kind, ver := "Installer", ""
+		le := listEntry{Name: a.Name, Repository: a.Repository, Type: "Installer", Destination: a.Destination, Publisher: a.Publisher, Trusted: a.AllowUnverified}
 		if a.IsArchive() {
-			kind, ver = "Archive", a.InstalledVersion
+			le.Type, le.Installed = "Archive", a.InstalledVersion
 		}
-		if a.AllowUnverified {
-			kind += " (trusted)"
+		if e != nil {
+			r := e.Update(a)
+			le.Installed, le.Latest, le.Status, le.Note = r.Installed, r.Latest, string(r.Status), r.Note
+			c.failed = c.failed || r.Status == core.Failed
 		}
-		rows = append(rows, []string{a.Name, a.Repository, kind, ver, strings.Join(a.Destination, "; ")})
+		entries = append(entries, le)
+		rows = append(rows, []string{le.Name, le.Installed, le.Latest, statusText(le), strings.Join(le.Destination, "; ")})
 	}
-	c.table([]string{"Name", "Repository", "Type", "Version", "Destination"}, rows)
+	if *asJSON {
+		return c.json(entries)
+	}
+	c.table([]string{"Name", "Installed", "Latest", "Status", "Folder"}, rows)
 	return nil
+}
+
+func statusText(le listEntry) string {
+	switch s := core.Status(le.Status); s {
+	case core.UpdateAvailable:
+		if strings.HasPrefix(le.Note, "No checksum") {
+			return readable(s) + " (no checksum)"
+		}
+		return readable(s)
+	case core.UpToDate, core.NotInstalled:
+		return readable(s)
+	case core.Failed:
+		return "Error: " + le.Note
+	}
+	return le.Note // skipped (like "Folder not found"), or nothing with --offline
 }
 
 func runUpdate(c *cli, args []string) error {
 	fs := c.flags("update")
-	dryRun := fs.Bool("dry-run", false, "only check: show what has updates, install nothing")
 	asJSON := fs.Bool("json", false, "print the results as JSON")
 	fs.BoolVar(&c.verbose, "verbose", false, "show more detail")
 	names, err := parse(fs, args)
@@ -253,17 +288,13 @@ func runUpdate(c *cli, args []string) error {
 		}
 	}
 	e := c.engine(path)
-	e.DryRun = *dryRun
-	if !*dryRun {
-		e.CleanWorkRoot()
-	}
+	e.CleanWorkRoot()
 	var results []core.Result
 	for _, app := range matching(apps, names) {
 		before, _ := json.Marshal(app)
 		e.Progress = func(msg string) { c.progress(app.Name + ": " + msg) }
 		r := e.Update(app)
-		// A dry run changes nothing on disk, not even what it learned (like HadDigest)
-		if after, _ := json.Marshal(app); !*dryRun && !bytes.Equal(before, after) {
+		if after, _ := json.Marshal(app); !bytes.Equal(before, after) {
 			if err := applist.Save(path, apps); err != nil {
 				return err
 			}
@@ -286,10 +317,25 @@ func (c *cli) printResults(results []core.Result, asJSON bool) error {
 	}
 	var rows [][]string
 	for _, r := range results {
-		rows = append(rows, []string{r.Name, r.Installed, r.Latest, string(r.Status), r.Note})
+		rows = append(rows, []string{r.Name, r.Installed, r.Latest, readable(r.Status), r.Note})
 	}
 	c.table([]string{"Name", "Installed", "Latest", "Status", "Note"}, rows)
 	return nil
+}
+
+// readable spells a status out for people ("Up to date"); --json keeps the exact values for scripts.
+func readable(s core.Status) string {
+	switch s {
+	case core.UpToDate:
+		return "Up to date"
+	case core.UpdateAvailable:
+		return "Update available"
+	case core.NotInstalled:
+		return "Not installed"
+	case core.NeedsAdmin:
+		return "Needs admin"
+	}
+	return string(s)
 }
 
 func runFind(c *cli, args []string) error {

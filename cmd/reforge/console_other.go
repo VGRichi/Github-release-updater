@@ -15,3 +15,5 @@ func terminalColors(f *os.File) bool {
 
 // startedByDoubleClick: other systems don't open a terminal for a double-clicked program like Windows does.
 func startedByDoubleClick() bool { return false }
+
+func runShell() bool { return false }

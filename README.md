@@ -73,17 +73,17 @@ reforge add storytold/photocraft --name PhotoCraft   # track an installed app
 reforge install storytold/pdfcraft                   # download and install a new app, and track it
 reforge add doitsujin/dxvk --dest "D:\Games\Witcher 3\bin\x64" --subfolder x64   # a game mod
 
-reforge update --dry-run                             # see what has updates
-reforge update                                       # update everything
+reforge list                                         # what you track, and which have updates
+reforge update                                       # install the updates
 ```
 
 | Command | What it does |
 |---|---|
 | `reforge install <owner/repo>` | Download and install an app, and track it |
 | `reforge add <owner/repo>` | Track an app you already have, or a game mod or tool with `--dest` |
-| `reforge update [name...]` | Check for updates and install them (`--dry-run` to only check) |
+| `reforge list [name...]` | Show what you track: installed and latest versions, folders, and which have updates |
+| `reforge update [name...]` | Install the updates |
 | `reforge find` | Find installed apps and downloads that come from GitHub |
-| `reforge list` | List what you track |
 | `reforge remove <name...>` | Stop tracking (doesn't uninstall) |
 
 `--name` is the app's name in **Settings → Apps → Installed apps**. Apps installed for all users need an administrator terminal. Every command has help: `reforge update --help`.
@@ -105,9 +105,11 @@ GitHub allows 60 checks an hour without signing in. For more, set `GITHUB_TOKEN`
 
 - **With a GitHub checksum:** verified, then installed. If it doesn't match, nothing is installed.
 - **Without one:** you're asked: **Yes**, **Always** (trust this app), or **No**. If the app's earlier releases had checksums, it always asks.
+- **Size:** a download that isn't the size GitHub lists is broken, and nothing is installed.
+- **Digital signature:** a signed installer whose signature is broken (changed after signing) is never installed. Reforge remembers who signs each app; if a release is suddenly signed by someone else, or not signed any more, it warns and asks.
 - **Nobody to ask** (a scheduled task): the answer is No.
 
-A checksum proves you got exactly the file on the release page, not that the release is trustworthy. Only track apps from developers you trust. DLL mods can trigger anti-cheat in online games.
+A checksum proves you got exactly the file on the release page, and a signature that the developer made it, but neither proves the app is safe. Only track apps from developers you trust. DLL mods can trigger anti-cheat in online games.
 
 ## Limitations
 

@@ -86,7 +86,7 @@ Reforge is a command-line tool, so it runs in a terminal rather than in a window
 Open PowerShell, Command Prompt or Windows Terminal and type, for example:
 
   reforge find --add          track apps you already have
-  reforge update --dry-run    see what has updates
+  reforge list                what you track, and which have updates
   reforge --help              all commands
 
 Press Enter to close.`

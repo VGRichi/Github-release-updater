@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -18,6 +20,29 @@ func terminalColors(f *os.File) bool {
 		return false
 	}
 	return windows.SetConsoleMode(h, mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) == nil
+}
+
+// runShell turns the window a double-click opened into a PowerShell prompt (PowerShell 7 if installed),
+// with Reforge's folder on its PATH so 'reforge' commands work there, and waits until it's closed.
+// It reports false if PowerShell couldn't start.
+func runShell() bool {
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	shell, err := exec.LookPath("pwsh.exe")
+	if err != nil {
+		shell = "powershell.exe"
+	}
+	cmd := exec.Command(shell, "-NoLogo")
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(exe)+";"+os.Getenv("PATH"))
+	cmd.Dir, _ = os.UserHomeDir()
+	if cmd.Start() != nil {
+		return false
+	}
+	cmd.Wait()
+	return true
 }
 
 var getConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleProcessList")
