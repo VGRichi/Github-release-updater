@@ -17,9 +17,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/VGRichi/Reforge" alt="MIT license"></a>
 </p>
 
-<p align="center">
-  <img src="assets/screenshots/reforge-list.png" alt="reforge list: two installed apps and two downloaded mods (DXVK, OptiScaler), with their installed and latest versions" width="760">
-</p>
+
 
 ## Features
 
@@ -32,6 +30,9 @@
 - **One small program**, nothing else to install
 
 Installer apps are Windows-only for now; game mods and tools work on Windows, macOS and Linux.
+<p align="center">
+  <img src="assets/screenshots/reforge-list.png" alt="reforge list: two installed apps and two downloaded mods (DXVK, OptiScaler), with their installed and latest versions" width="760">
+</p>
 
 ## Install
 
