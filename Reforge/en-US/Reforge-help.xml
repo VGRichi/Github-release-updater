@@ -428,17 +428,32 @@ Add-ReforgeApp @app</dev:code>
       <command:verb>Find</command:verb>
       <command:noun>ReforgeApp</command:noun>
       <maml:description>
-        <maml:para>Finds installed apps that come from GitHub.</maml:para>
+        <maml:para>Finds installed apps and downloaded tools that come from GitHub.</maml:para>
       </maml:description>
     </command:details>
     <maml:description>
-      <maml:para>Looks through Settings &gt; Apps &gt; Installed apps for apps whose uninstall information links to a GitHub repository. Apps already in your list and apps that winget can update are left out. Nothing is added; pipe the results to Add-ReforgeApp to track them.</maml:para>
-      <maml:para>Apps that don't include a GitHub link in their uninstall information can't be found this way; add those with Add-ReforgeApp.</maml:para>
+      <maml:para>Looks in two places:</maml:para>
+      <maml:para>Settings &gt; Apps &gt; Installed apps, for apps whose uninstall information links to a GitHub repository.</maml:para>
+      <maml:para>Your Downloads folder (and two levels of subfolders), for files downloaded from GitHub releases. Browsers note on each download the page it came from, which names the repository and release. A downloaded installer is suggested when the app it installs is in Installed apps with the same version. A downloaded archive (.zip, .7z, .tar.gz) is suggested as an archive tool; Reforge can't know which folder you extracted it into, so add it with -Destination.</maml:para>
+      <maml:para>Apps already in your list and apps that winget can update are left out. Nothing is added; pipe the results to Add-ReforgeApp to track them.</maml:para>
+      <maml:para>Apps with no GitHub link and no download left in Downloads can't be found; add those with Add-ReforgeApp. Some tools remove the download note, like Unblock-File.</maml:para>
     </maml:description>
     <command:syntax>
       <command:syntaxItem>
         <maml:name>Find-ReforgeApp</maml:name>
         <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="False" position="1" aliases="none">
+          <maml:name>Path</maml:name>
+          <maml:description>
+            <maml:para>Folders to look in for files downloaded from GitHub, with two levels of subfolders. Defaults to your Downloads folder.</maml:para>
+          </maml:description>
+          <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
+          <dev:type>
+            <maml:name>String[]</maml:name>
+            <maml:uri />
+          </dev:type>
+          <dev:defaultValue>Your Downloads folder</dev:defaultValue>
+        </command:parameter>
+        <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="False" position="named" aliases="none">
           <maml:name>ConfigPath</maml:name>
           <maml:description>
             <maml:para>Use a different list file.</maml:para>
@@ -453,7 +468,7 @@ Add-ReforgeApp @app</dev:code>
       </command:syntaxItem>
     </command:syntax>
     <command:parameters>
-      <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="False" position="1" aliases="none">
+      <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="False" position="named" aliases="none">
         <maml:name>ConfigPath</maml:name>
         <maml:description>
           <maml:para>Use a different list file.</maml:para>
@@ -464,6 +479,18 @@ Add-ReforgeApp @app</dev:code>
           <maml:uri />
         </dev:type>
         <dev:defaultValue>$script:DefaultConfigPath</dev:defaultValue>
+      </command:parameter>
+      <command:parameter required="false" variableLength="true" globbing="false" pipelineInput="False" position="1" aliases="none">
+        <maml:name>Path</maml:name>
+        <maml:description>
+          <maml:para>Folders to look in for files downloaded from GitHub, with two levels of subfolders. Defaults to your Downloads folder.</maml:para>
+        </maml:description>
+        <command:parameterValue required="true" variableLength="false">String[]</command:parameterValue>
+        <dev:type>
+          <maml:name>String[]</maml:name>
+          <maml:uri />
+        </dev:type>
+        <dev:defaultValue>Your Downloads folder</dev:defaultValue>
       </command:parameter>
     </command:parameters>
     <command:inputTypes />
@@ -487,21 +514,35 @@ Add-ReforgeApp @app</dev:code>
         <maml:title>-------------------------- EXAMPLE 1 --------------------------</maml:title>
         <dev:code>Find-ReforgeApp</dev:code>
         <dev:remarks>
-          <maml:para>Shows installed apps that link to GitHub and aren't tracked yet.</maml:para>
+          <maml:para>Shows apps and tools from GitHub that aren't tracked yet.</maml:para>
         </dev:remarks>
       </command:example>
       <command:example>
         <maml:title>-------------------------- EXAMPLE 2 --------------------------</maml:title>
-        <dev:code>Find-ReforgeApp | Add-ReforgeApp</dev:code>
+        <dev:code>Find-ReforgeApp | Where-Object Type -eq Installer | Add-ReforgeApp</dev:code>
         <dev:remarks>
-          <maml:para>Tracks all of them.</maml:para>
+          <maml:para>Tracks all the installed apps it found.</maml:para>
         </dev:remarks>
       </command:example>
       <command:example>
         <maml:title>-------------------------- EXAMPLE 3 --------------------------</maml:title>
         <dev:code>Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp</dev:code>
         <dev:remarks>
-          <maml:para>Lets you pick which ones to track in a window.</maml:para>
+          <maml:para>Lets you pick which installed apps to track in a window.</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>-------------------------- EXAMPLE 4 --------------------------</maml:title>
+        <dev:code>Find-ReforgeApp | Where-Object Name -eq OptiScaler | Add-ReforgeApp -Name 'OptiScaler (Cyberpunk)' -Destination 'D:\Games\Cyberpunk 2077\bin\x64'</dev:code>
+        <dev:remarks>
+          <maml:para>Tracks a downloaded archive tool for the game folder you extracted it into.</maml:para>
+        </dev:remarks>
+      </command:example>
+      <command:example>
+        <maml:title>-------------------------- EXAMPLE 5 --------------------------</maml:title>
+        <dev:code>Find-ReforgeApp -Path D:\Mods, "$env:USERPROFILE\Desktop"</dev:code>
+        <dev:remarks>
+          <maml:para>Looks for downloads in other folders instead of Downloads.</maml:para>
         </dev:remarks>
       </command:example>
     </command:examples>

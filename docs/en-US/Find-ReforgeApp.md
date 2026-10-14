@@ -8,22 +8,33 @@ schema: 2.0.0
 # Find-ReforgeApp
 
 ## SYNOPSIS
-Finds installed apps that come from GitHub.
+Finds installed apps and downloaded tools that come from GitHub.
 
 ## SYNTAX
 
 ```
-Find-ReforgeApp [[-ConfigPath] <String>] [<CommonParameters>]
+Find-ReforgeApp [[-Path] <String[]>] [-ConfigPath <String>] [<CommonParameters>]
 ```
 
 ## DESCRIPTION
-Looks through Settings \> Apps \> Installed apps for apps whose uninstall information links to
-a GitHub repository.
+Looks in two places:
+
+Settings \> Apps \> Installed apps, for apps whose uninstall information links to a GitHub
+repository.
+
+Your Downloads folder (and two levels of subfolders), for files downloaded from GitHub releases.
+Browsers note on each download the page it came from, which names the repository and release.
+A downloaded installer is suggested when the app it installs is in Installed apps with the
+same version.
+A downloaded archive (.zip, .7z, .tar.gz) is suggested as an archive tool; Reforge can't know
+which folder you extracted it into, so add it with -Destination.
+
 Apps already in your list and apps that winget can update are left out.
 Nothing is added; pipe the results to Add-ReforgeApp to track them.
 
-Apps that don't include a GitHub link in their uninstall information can't be found this way;
-add those with Add-ReforgeApp.
+Apps with no GitHub link and no download left in Downloads can't be found; add those with
+Add-ReforgeApp.
+Some tools remove the download note, like Unblock-File.
 
 ## EXAMPLES
 
@@ -32,21 +43,35 @@ add those with Add-ReforgeApp.
 Find-ReforgeApp
 ```
 
-Shows installed apps that link to GitHub and aren't tracked yet.
+Shows apps and tools from GitHub that aren't tracked yet.
 
 ### EXAMPLE 2
 ```
-Find-ReforgeApp | Add-ReforgeApp
+Find-ReforgeApp | Where-Object Type -eq Installer | Add-ReforgeApp
 ```
 
-Tracks all of them.
+Tracks all the installed apps it found.
 
 ### EXAMPLE 3
 ```
 Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp
 ```
 
-Lets you pick which ones to track in a window.
+Lets you pick which installed apps to track in a window.
+
+### EXAMPLE 4
+```
+Find-ReforgeApp | Where-Object Name -eq OptiScaler | Add-ReforgeApp -Name 'OptiScaler (Cyberpunk)' -Destination 'D:\Games\Cyberpunk 2077\bin\x64'
+```
+
+Tracks a downloaded archive tool for the game folder you extracted it into.
+
+### EXAMPLE 5
+```
+Find-ReforgeApp -Path D:\Mods, "$env:USERPROFILE\Desktop"
+```
+
+Looks for downloads in other folders instead of Downloads.
 
 ## PARAMETERS
 
@@ -59,8 +84,24 @@ Parameter Sets: (All)
 Aliases:
 
 Required: False
-Position: 1
+Position: Named
 Default value: $script:DefaultConfigPath
+Accept pipeline input: False
+Accept wildcard characters: False
+```
+
+### -Path
+Folders to look in for files downloaded from GitHub, with two levels of subfolders.
+Defaults to your Downloads folder.
+
+```yaml
+Type: String[]
+Parameter Sets: (All)
+Aliases:
+
+Required: False
+Position: 1
+Default value: Your Downloads folder
 Accept pipeline input: False
 Accept wildcard characters: False
 ```

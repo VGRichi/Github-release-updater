@@ -55,7 +55,7 @@ Apps installed for all users need PowerShell running as administrator to update.
 | `Install-ReforgeApp` | Install an app from GitHub for the first time, and track it |
 | `Get-ReforgeApp` | List what you're tracking |
 | `Update-ReforgeApp` | Check and install updates (`-WhatIf` to only check) |
-| `Find-ReforgeApp` | Find installed apps that link to GitHub |
+| `Find-ReforgeApp` | Find installed apps and downloaded tools that come from GitHub |
 | `Remove-ReforgeApp` | Stop tracking an app (doesn't uninstall it) |
 
 Every command has full help: `Get-Help Add-ReforgeApp -Examples`, or `-Online` to open its page on GitHub. Run `Update-Help -Module Reforge` to get the newest help without updating the module. The help pages also live in [docs/en-US](docs/en-US).
@@ -73,7 +73,7 @@ Add-ReforgeApp @app
 # A CSV file with Repository and Name columns
 Import-Csv .\my-apps.csv | Add-ReforgeApp
 
-# Installed apps that link to GitHub (pick them in a window)
+# Installed apps from GitHub (pick them in a window)
 Find-ReforgeApp | Out-GridView -PassThru | Add-ReforgeApp
 ```
 
@@ -88,6 +88,8 @@ Add-ReforgeApp -Repository doitsujin/dxvk -Name 'DXVK (Witcher 3)' `
 Add-ReforgeApp -Repository optiscaler/OptiScaler -Name 'OptiScaler (Cyberpunk)' `
     -Destination 'D:\Games\Cyberpunk 2077\bin\x64' -Rename @{ 'OptiScaler.dll' = 'dxgi.dll' } -Keep '*.ini'
 ```
+
+Don't remember the repository? If the download is still in your Downloads folder, `Find-ReforgeApp` lists it (Type `Archive`), and you can pipe it into `Add-ReforgeApp -Destination '<folder>'`.
 
 | Option | Purpose |
 |---|---|
@@ -144,7 +146,7 @@ Thanks to the Reddit commenters whose feedback shaped the security rules and the
 
 - Version checks use the numbers only, so `1.2.0-beta3` → `1.2.0-beta4` isn't detected as an update.
 - Apps that report a wrong version in Installed apps will be offered the same update every time. Remove them with `Remove-ReforgeApp`.
-- `Find-ReforgeApp` only finds apps that include a GitHub link in their uninstall information.
+- `Find-ReforgeApp` only finds apps that link to GitHub in their uninstall information, or whose GitHub download is still in your Downloads folder.
 
 ## Publishing a new version (maintainers)
 

@@ -535,6 +535,73 @@ function Invoke-ArchiveAppUpdate($App, $Release, $Result, $Cmdlet, [string]$Conf
 }
 
 # ============================================================================
+#  Private helpers: finding apps from GitHub
+# ============================================================================
+
+function Get-DownloadsFolder {
+    # The Downloads folder can be moved, so ask Windows where it is
+    $folders = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders' -ErrorAction Ignore
+    $known = if ($folders) { $folders.'{374DE290-123F-4565-9164-39C4925E467B}' }
+    if ($known) { $known } else { Join-Path $env:USERPROFILE 'Downloads' }
+}
+
+function Get-DownloadOrigin([string]$File) {
+    # Browsers note where a file came from in its Zone.Identifier stream (the "Mark of the Web").
+    # GitHub serves release files from another host, so the repository and tag come from the
+    # release page it was downloaded from (ReferrerUrl).
+    $note = Get-Content -LiteralPath $File -Stream Zone.Identifier -ErrorAction Ignore
+    if (($note -join "`n") -match 'https://github\.com/([\w.-]+/[\w.-]+)/releases/(?:tag|download)/([^/?#\s]+)') {
+        [pscustomobject]@{ Repository = $Matches[1]; Tag = [uri]::UnescapeDataString($Matches[2]) }
+    }
+}
+
+function Get-GitHubDownload([string[]]$Path) {
+    # Two levels of subfolders, for downloads sorted into folders like Downloads\Mods.
+    # Newest first, so each repository's latest download wins.
+    Get-ChildItem -LiteralPath $Path -File -Recurse -Depth 2 |
+        Where-Object Name -match '(?i)\.(msi|exe|zip|7z|tar\.gz|tgz|tar\.xz)$' |
+        Sort-Object LastWriteTime -Descending |
+        ForEach-Object {
+            $origin = Get-DownloadOrigin $_.FullName
+            if ($origin) { $origin | Add-Member -NotePropertyName File -NotePropertyValue $_.Name -PassThru }
+        }
+}
+
+function Get-VersionText([string]$Text) {
+    # "v1.2.0" and "1.2.0.0" both become "1.2", so versions written differently compare equal
+    $v = ConvertTo-AppVersion $Text
+    if ($v) { "$v" -replace '(\.0)+$' }
+}
+
+function Find-DownloadedProgram($Programs, $Download) {
+    # The installed app with the release's version whose name (its first word, like "Notepad++")
+    # is in the file or repository name. Both must match, so a download alone never suggests an app.
+    $version = Get-VersionText $Download.Tag
+    if (-not $version) { return }
+    $names = ($Download.File + $Download.Repository) -replace '[^a-zA-Z0-9]'
+    $Programs | Where-Object {
+        $word = ($_.DisplayName -split '\s')[0] -replace '[^a-zA-Z0-9]'
+        $word.Length -ge 3 -and $names -like "*$word*" -and (Get-VersionText $_.DisplayVersion) -eq $version
+    } | Select-Object -First 1
+}
+
+function Test-WingetApp($Program, $WingetPackages) {
+    # winget shortens names ("PowerShell 7-x64" is "PowerShell"), so match the start of the name and the version
+    [bool]($WingetPackages | Where-Object { $_.Name -and $Program.DisplayName.StartsWith($_.Name, [StringComparison]::OrdinalIgnoreCase) -and $_.InstalledVersion -eq $Program.DisplayVersion })
+}
+
+function New-Candidate($Program, [string]$Repository, [string]$Version) {
+    # An installed app, or an archive tool known only from its download (no $Program)
+    [pscustomobject]@{
+        PSTypeName = 'Reforge.Candidate'
+        Name       = if ($Program) { Get-ProgramBaseName $Program.DisplayName } else { $Repository.Split('/')[1] }   # no version, so it stays valid after updates
+        Repository = $Repository
+        Version    = if ($Program) { $Program.DisplayVersion } else { $Version }
+        Type       = if ($Program) { 'Installer' } else { 'Archive' }
+    }
+}
+
+# ============================================================================
 #  Public commands
 # ============================================================================
 
@@ -590,6 +657,10 @@ function Add-ReforgeApp {
         [Parameter(ValueFromPipelineByPropertyName)]
         [switch]$AllowUnverified,
 
+        # From Find-ReforgeApp: an archive tool can't be tracked without knowing its folder
+        [Parameter(ValueFromPipelineByPropertyName, DontShow)]
+        [string]$Type,
+
         [switch]$Force,
 
         [switch]$PassThru,
@@ -608,6 +679,10 @@ function Add-ReforgeApp {
             return
         }
         $appName = if ($Name) { $Name } else { $repo.Split('/')[1] }
+        if ($Type -eq 'Archive' -and -not $Destination) {
+            Write-Error "'$appName' is an archive tool. Add it with -Destination, the folder its files go into."
+            return
+        }
 
         $resolved = @()
         foreach ($d in @($Destination | Where-Object { $_ })) {
@@ -775,6 +850,9 @@ function Find-ReforgeApp {
     [CmdletBinding()]
     [OutputType('Reforge.Candidate')]
     param(
+        [Parameter(Position = 0)]
+        [string[]]$Path = (Get-DownloadsFolder),
+
         [ValidateNotNullOrEmpty()][string]$ConfigPath = $script:DefaultConfigPath
     )
     $tracked = @(Read-AppList $ConfigPath | ForEach-Object { $_.Repository })
@@ -784,22 +862,33 @@ function Find-ReforgeApp {
         $winget = @(Get-WinGetPackage | Where-Object Source -eq 'winget')
     }
     $seen = @{}
-    foreach ($program in Get-InstalledProgram) {
+    $programs = @(Get-InstalledProgram)
+
+    # Installed apps that link to GitHub in their uninstall information
+    foreach ($program in $programs) {
         $urls = @($program.URLInfoAbout, $program.URLUpdateInfo, $program.HelpLink) -join ' '
         if ($urls -notmatch 'github\.com/([\w.-]+)/([\w.-]+)') { continue }
         $owner = $Matches[1]
         $repo  = "$owner/$($Matches[2] -replace '\.git$', '')"
         if ($owner -in 'sponsors', 'orgs', 'apps', 'features', 'settings') { continue }
-        if ($tracked -contains $repo -or $seen[$repo]) { continue }
-        # winget shortens names ("PowerShell 7-x64" is "PowerShell"), so match the start of the name and the version
-        if ($winget | Where-Object { $_.Name -and $program.DisplayName.StartsWith($_.Name, [StringComparison]::OrdinalIgnoreCase) -and $_.InstalledVersion -eq $program.DisplayVersion }) { continue }
+        if ($tracked -contains $repo -or $seen[$repo] -or (Test-WingetApp $program $winget)) { continue }
         $seen[$repo] = $true
-        [pscustomobject]@{
-            PSTypeName = 'Reforge.Candidate'
-            Name       = Get-ProgramBaseName $program.DisplayName   # stays valid after the version changes
-            Repository = $repo
-            Version    = $program.DisplayVersion
+        New-Candidate $program $repo
+    }
+
+    # Files downloaded from GitHub releases: archive tools, and installers of apps that are installed
+    foreach ($download in Get-GitHubDownload $Path) {
+        $repo = $download.Repository
+        if ($tracked -contains $repo -or $seen[$repo]) { continue }
+        if ($download.File -match '(?i)\.(zip|7z|tar\.gz|tgz|tar\.xz)$') {
+            $seen[$repo] = $true
+            New-Candidate $null $repo $download.Tag
+            continue
         }
+        $program = Find-DownloadedProgram $programs $download
+        if (-not $program -or (Test-WingetApp $program $winget)) { continue }
+        $seen[$repo] = $true
+        New-Candidate $program $repo
     }
 }
 
