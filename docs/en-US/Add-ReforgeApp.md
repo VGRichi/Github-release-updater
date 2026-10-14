@@ -143,7 +143,7 @@ Accept wildcard characters: False
 
 ### -Include
 Archive tools: only copy files matching these wildcards, for example '*.dll'.
-Matches file names or paths inside the archive ('bin\*').
+Matches file names or paths inside the archive ('bin\\*').
 
 ```yaml
 Type: String[]
@@ -160,7 +160,7 @@ Accept wildcard characters: False
 ### -Keep
 Archive tools: files that are added if missing but never overwritten, like your settings
 files ('*.ini').
-Matches file names or paths inside the archive ('config\*').
+Matches file names or paths inside the archive ('config\\*').
 
 ```yaml
 Type: String[]
@@ -262,7 +262,7 @@ The GitHub repository as owner/repo, or its full GitHub link.
 ```yaml
 Type: String
 Parameter Sets: (All)
-Aliases: Repo
+Aliases:
 
 Required: True
 Position: 1

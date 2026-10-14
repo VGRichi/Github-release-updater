@@ -6,17 +6,6 @@
 
 $script:AppDataRoot = if ($env:APPDATA) { $env:APPDATA } else { [Environment]::GetFolderPath('ApplicationData') }
 $script:DefaultConfigPath = Join-Path (Join-Path $script:AppDataRoot 'Reforge') 'apps.json'
-
-# LEGACY, remove in 4.0: one-time move of the app list from the old name (GitHubAppUpdater v1/v2)
-$legacyConfig = Join-Path (Join-Path $script:AppDataRoot 'GitHubAppUpdater') 'github-apps.json'
-if (-not (Test-Path -LiteralPath $script:DefaultConfigPath) -and (Test-Path -LiteralPath $legacyConfig)) {
-    try {
-        New-Item -ItemType Directory -Path (Split-Path -Parent $script:DefaultConfigPath) -Force | Out-Null
-        Copy-Item -LiteralPath $legacyConfig -Destination $script:DefaultConfigPath -ErrorAction Stop
-    } catch {
-        $script:DefaultConfigPath = $legacyConfig
-    }
-}
 $script:ListChanged = $false
 $script:BackupsToKeep = 3                      # per app; older backup folders are deleted
 $script:WorkRoot = [IO.Path]::GetTempPath()    # downloads are extracted in reforge-* folders here
@@ -34,19 +23,8 @@ function Read-AppList([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $raw = Get-Content -LiteralPath $Path -Raw
     if (-not ($raw -and $raw.Trim())) { return }
-    foreach ($item in (ConvertFrom-Json -InputObject $raw)) {
-        # LEGACY (GitHubAppUpdater v1/v2 lists), remove in 4.0: "Repo" is now "Repository",
-        # and "Destinations" is merged into "Destination"
-        if ($item.PSObject.Properties['Repo'] -and -not $item.PSObject.Properties['Repository']) {
-            $item | Add-Member -NotePropertyName Repository -NotePropertyValue $item.Repo
-            $item.PSObject.Properties.Remove('Repo')
-        }
-        if ($item.PSObject.Properties['Destinations']) {
-            $item | Add-Member -NotePropertyName Destination -NotePropertyValue @(@($item.Destination) + @($item.Destinations) | Where-Object { $_ }) -Force
-            $item.PSObject.Properties.Remove('Destinations')
-        }
-        $item
-    }
+    # foreach unrolls the array; Windows PowerShell's ConvertFrom-Json returns it as one object
+    foreach ($item in (ConvertFrom-Json -InputObject $raw)) { $item }
 }
 
 function Save-AppList([string]$Path, $Items) {
@@ -82,9 +60,25 @@ function ConvertTo-AppView($App) {
     }
 }
 
+function New-Result($App) {
+    [ordered]@{ Name = $App.Name; Repository = $App.Repository; Installed = $null; Latest = $null; Status = $null; Note = $null }
+}
+
+function ConvertTo-ResultView($Result) {
+    $out = [pscustomobject]$Result
+    $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
+    $out
+}
+
 # ============================================================================
 #  Private helpers: GitHub
 # ============================================================================
+
+function ConvertTo-RepositoryName([string]$Repository) {
+    # owner/repo from owner/repo or a GitHub link; nothing if it's neither
+    $repo = $Repository.Trim() -replace '^https?://(www\.)?github\.com/', '' -replace '\.git$', '' -replace '/+$', ''
+    if ($repo -match '^[\w.-]+/[\w.-]+$') { $repo }
+}
 
 function Get-RequestHeader([securestring]$Token) {
     $headers = @{ 'User-Agent' = 'Reforge'; 'Accept' = 'application/vnd.github+json' }
@@ -304,21 +298,56 @@ function Invoke-InstallerAppUpdate($App, $Release, $Program, $Result, $Cmdlet) {
     if (-not $Cmdlet.ShouldProcess("$($App.Name) $($Release.tag_name)", "Install $($asset.name)")) { return }
     if (-not (Test-PerUserInstall $Program) -and -not (Test-IsAdmin)) { $Result.Status = 'NeedsAdmin'; $Result.Note = 'Installed for all users; run PowerShell as administrator'; return }
     if (-not (Approve-Install $App $asset)) { $Result.Status = 'Skipped'; $Result.Note = 'Unverified download declined'; return }
+    Install-ReleaseAsset $App $asset $Result 'Updated'
+}
 
+function Install-ReleaseAsset($App, $Asset, $Result, [string]$DoneStatus) {
     $work = New-WorkFolder
     try {
-        $file = Save-ReleaseAsset $asset $work
-        Write-Verbose "Installing $($asset.name)"
+        $file = Save-ReleaseAsset $Asset $work
+        Write-Verbose "Installing $($Asset.name)"
         $code = Invoke-Installer $file $App.SilentArgs
-        if ($code -in 0, 3010, 1641) {
-            $Result.Status = 'Updated'
-            $Result.Note = if ($code -ne 0) { 'Restart needed to finish' } elseif ($asset.digest) { 'Checksum verified' } else { 'Unverified' }
-        } else {
-            $Result.Status = 'Failed'
-            $Result.Note = "Installer exit code $code"
-        }
     } finally {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue -WhatIf:$false
+    }
+    if ($code -in 0, 3010, 1641) {
+        $Result.Status = $DoneStatus
+        $Result.Note = if ($code -ne 0) { 'Restart needed to finish' } elseif ($Asset.digest) { 'Checksum verified' } else { 'Unverified' }
+    } else {
+        $Result.Status = 'Failed'
+        $Result.Note = "Installer exit code $code"
+    }
+}
+
+function Get-ProgramKey($Program) { "$($Program.PSPath)|$($Program.DisplayVersion)" }
+
+function Invoke-InstallerAppInstall($App, $Release, $Result, $Cmdlet, [bool]$Force) {
+    $asset = Select-InstallerAsset $Release $App.Pattern $true   # .msi when there's a choice
+    if (-not $asset) { $Result.Status = 'Skipped'; $Result.Note = 'No Windows installer in this release (for a zip tool, use Add-ReforgeApp -Destination)'; return }
+    if ($asset.digest) { Set-AppField $App 'HadDigest' $true }
+
+    $Result.Status = 'Available'
+    $Result.Note = Get-VerificationNote $App $asset
+    if (-not $Cmdlet.ShouldProcess("$($App.Repository) $($Release.tag_name)", "Install $($asset.name)")) { return }
+    # Installing something new always gets a question; the unverified-download prompt is that question
+    $approved = if (-not $asset.digest -and -not $App.AllowUnverified) { Approve-Install $App $asset }
+                elseif ($Force) { $true }
+                else { (Read-Choice 'Install' "Install $($asset.name) from $($App.Repository)? ($($Result.Note))" @('&Yes', '&No') 1) -eq 0 }
+    if (-not $approved) { $Result.Status = 'Skipped'; $Result.Note = 'Not installed'; return }
+
+    # What the installer added (or changed, if the app was already there) tells us its name in Installed apps
+    $before = @(Get-InstalledProgram | ForEach-Object { Get-ProgramKey $_ })
+    Install-ReleaseAsset $App $asset $Result 'Installed'
+    if ($Result.Status -ne 'Installed') {
+        if (-not (Test-IsAdmin)) { $Result.Note += '. It may need PowerShell running as administrator' }
+        return
+    }
+    $leaf = $App.Repository.Split('/')[1]
+    $program = Get-InstalledProgram | Where-Object { (Get-ProgramKey $_) -notin $before } |
+               Sort-Object { $_.DisplayName -notlike "*$leaf*" } | Select-Object -First 1
+    if ($program) {
+        if (-not $App.Name) { $App.Name = Get-ProgramBaseName $program.DisplayName }
+        $Result.Installed = $program.DisplayVersion
     }
 }
 
@@ -529,7 +558,6 @@ function Add-ReforgeApp {
     [OutputType('Reforge.App')]
     param(
         [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
-        [Alias('Repo')]   # LEGACY: GitHubAppUpdater v1 lists and CSVs used Repo
         [string]$Repository,
 
         [Parameter(Position = 1, ValueFromPipelineByPropertyName)]
@@ -574,8 +602,8 @@ function Add-ReforgeApp {
         $changed = $false
     }
     process {
-        $repo = $Repository.Trim() -replace '^https?://(www\.)?github\.com/', '' -replace '\.git$', '' -replace '/+$', ''
-        if ($repo -notmatch '^[\w.-]+/[\w.-]+$') {
+        $repo = ConvertTo-RepositoryName $Repository
+        if (-not $repo) {
             Write-Error "'$Repository' isn't a GitHub repository. Use owner/repo, for example storytold/photocraft."
             return
         }
@@ -622,6 +650,92 @@ function Add-ReforgeApp {
     }
     end {
         if ($changed) { Save-AppList $ConfigPath $apps }
+    }
+}
+
+function Install-ReforgeApp {
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType('Reforge.Result')]
+    param(
+        [Parameter(Mandatory, Position = 0, ValueFromPipelineByPropertyName)]
+        [string]$Repository,
+
+        [Parameter(Position = 1, ValueFromPipelineByPropertyName)]
+        [string]$Name,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$Pattern,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string]$SilentArgs,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [switch]$Prerelease,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [switch]$AllowUnverified,
+
+        [securestring]$Token,
+
+        [switch]$Force,
+
+        [ValidateNotNullOrEmpty()][string]$ConfigPath = $script:DefaultConfigPath
+    )
+    begin {
+        $apps = [System.Collections.Generic.List[object]]::new()
+        foreach ($a in Read-AppList $ConfigPath) { $apps.Add($a) }
+        $headers = Get-RequestHeader $Token
+        if (-not $WhatIfPreference) { Remove-StaleWorkFolder }
+    }
+    process {
+        $repo = ConvertTo-RepositoryName $Repository
+        if (-not $repo) {
+            Write-Error "'$Repository' isn't a GitHub repository. Use owner/repo, for example storytold/photocraft."
+            return
+        }
+        $tracked = @($apps | Where-Object { ($_.Repository -eq $repo -and $_.Type -ne 'archive') -or ($Name -and $_.Name -eq $Name) })
+        if ($tracked) {
+            Write-Error "'$($tracked[0].Name)' is already in the list. Update it with Update-ReforgeApp."
+            return
+        }
+
+        $entry = [ordered]@{ Name = $Name; Repository = $repo }
+        if ($Pattern)         { $entry.Pattern = $Pattern }
+        if ($SilentArgs)      { $entry.SilentArgs = $SilentArgs }
+        if ($Prerelease)      { $entry.Prerelease = $true }
+        if ($AllowUnverified) { $entry.AllowUnverified = $true }
+        $app = [pscustomobject]$entry
+        $result = New-Result $app
+        try {
+            $release = Get-LatestRelease $repo ([bool]$Prerelease) $headers
+            if ($release) {
+                $result.Latest = $release.tag_name
+                Invoke-InstallerAppInstall $app $release $result $PSCmdlet ([bool]$Force)
+            } else {
+                $result.Status = 'Skipped'
+                $result.Note = 'No releases found'
+            }
+        } catch {
+            $result.Status = 'Failed'
+            $result.Note = $_.Exception.Message
+            Write-Warning "${repo}: $($_.Exception.Message)"
+        }
+
+        $nameFound = [bool]$app.Name
+        if (-not $nameFound) { $app.Name = $repo.Split('/')[1] }
+        $result.Name = $app.Name
+        if ($result.Status -eq 'Installed') {
+            if (-not $nameFound) {
+                Write-Warning "Couldn't see the app in Installed apps, so it's tracked as '$($app.Name)'. If Update-ReforgeApp says NotInstalled, add it again with the name Settings shows: Add-ReforgeApp $repo -Name '<name>' -Force"
+            }
+            if ($apps | Where-Object Name -eq $app.Name) {
+                Write-Warning "'$($app.Name)' is already in the list, so this app isn't tracked. Track it with Add-ReforgeApp $repo -Name '<another name>'."
+            } else {
+                $apps.Add($app)
+                Save-AppList $ConfigPath $apps
+            }
+        }
+        ConvertTo-ResultView $result
     }
 }
 
@@ -725,7 +839,7 @@ function Update-ReforgeApp {
         foreach ($app in $targets) {
             $i++
             Write-Progress -Activity 'Updating Reforge apps' -Status $app.Name -PercentComplete (($i - 1) / $targets.Count * 100)
-            $result = [ordered]@{ Name = $app.Name; Repository = $app.Repository; Installed = $null; Latest = $null; Status = $null; Note = $null }
+            $result = New-Result $app
             try {
                 $isArchive = $app.Type -eq 'archive'
                 $program = $null
@@ -756,12 +870,10 @@ function Update-ReforgeApp {
             # -WhatIf changes nothing on disk, not even what it learned (like HadDigest)
             if ($script:ListChanged -and -not $WhatIfPreference) { Save-AppList $ConfigPath $apps }
             $script:ListChanged = $false
-            $out = [pscustomobject]$result
-            $out.PSObject.TypeNames.Insert(0, 'Reforge.Result')
-            $out
+            ConvertTo-ResultView $result
         }
         Write-Progress -Activity 'Updating Reforge apps' -Completed
     }
 }
 
-Export-ModuleMember -Function Get-ReforgeApp, Add-ReforgeApp, Remove-ReforgeApp, Find-ReforgeApp, Update-ReforgeApp
+Export-ModuleMember -Function Get-ReforgeApp, Add-ReforgeApp, Install-ReforgeApp, Remove-ReforgeApp, Find-ReforgeApp, Update-ReforgeApp

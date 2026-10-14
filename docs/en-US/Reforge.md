@@ -20,6 +20,9 @@ Finds installed apps that come from GitHub.
 ### [Get-ReforgeApp](Get-ReforgeApp.md)
 Lists the apps and tools you're tracking.
 
+### [Install-ReforgeApp](Install-ReforgeApp.md)
+Installs an app from its latest GitHub release and starts tracking it.
+
 ### [Remove-ReforgeApp](Remove-ReforgeApp.md)
 Stops tracking an app or tool.
 

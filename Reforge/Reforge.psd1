@@ -9,7 +9,7 @@
     CompatiblePSEditions = @('Desktop', 'Core')
     HelpInfoURI          = 'https://github.com/VGRichi/Reforge/releases/latest/download/'
     FormatsToProcess     = @('Reforge.Format.ps1xml')
-    FunctionsToExport    = @('Get-ReforgeApp', 'Add-ReforgeApp', 'Remove-ReforgeApp', 'Find-ReforgeApp', 'Update-ReforgeApp')
+    FunctionsToExport    = @('Get-ReforgeApp', 'Add-ReforgeApp', 'Install-ReforgeApp', 'Remove-ReforgeApp', 'Find-ReforgeApp', 'Update-ReforgeApp')
     CmdletsToExport      = @()
     VariablesToExport    = @()
     AliasesToExport      = @()
