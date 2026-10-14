@@ -13,8 +13,8 @@ the old script. Never reuse a deleted version tag.
 ```
 reforge add <owner/repo>       start tracking an app or tool
 reforge install <owner/repo>   install an app for the first time, and track it
-reforge list [name...]         list what's tracked
-reforge update [name...]       check for updates and install them (--dry-run to only check)
+reforge list [name...]         list what's tracked: installed and latest versions, folders
+reforge update [name...]       install the updates
 reforge find                   find installed apps and downloaded tools that come from GitHub
 reforge remove <name...>       stop tracking
 ```
@@ -33,6 +33,17 @@ from `GITHUB_TOKEN` or `GH_TOKEN` only, never a flag, so it doesn't end up in sh
   (verified / ask / trusted / always ask if earlier releases had checksums / "No" when nobody can be
   asked), statuses, all-or-nothing archive copies with backups, finding apps by links, downloads
   (Mark of the Web) and the winget skip.
+
+## Added in Go
+
+- **Size check**: a download that isn't the size GitHub lists is broken and deleted.
+- **Signatures** (Windows, Authenticode): a broken signature installs nothing. The signer is remembered
+  per app (`Publisher` in the list); a release signed by someone else, or no longer signed, warns and
+  asks (default No, never skipped by `--yes` or trusting the app), since a hacked account can publish a
+  release with a valid checksum but not with the developer's signature.
+- **`reforge list`** checks GitHub (installed and latest version per app), replacing `update --dry-run`.
+- **Double-click** (Windows): shows the help and turns the window into a PowerShell prompt, instead of
+  a window that closes at once.
 
 ## Layout
 

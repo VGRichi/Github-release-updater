@@ -5,7 +5,7 @@
       "label": "Reforge: check for updates",
       "type": "process",
       "command": "go",
-      "args": ["run", "./cmd/reforge", "update", "--dry-run"],
+      "args": ["run", "./cmd/reforge", "list"],
       "problemMatcher": []
     },
     {

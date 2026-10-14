@@ -27,6 +27,7 @@ type fakeSystem struct{ programs []system.Program }
 func (s *fakeSystem) Programs() ([]system.Program, error)      { return s.programs, nil }
 func (s *fakeSystem) RunInstaller(string, string) (int, error) { return 0, nil }
 func (s *fakeSystem) IsAdmin() bool                            { return false }
+func (s *fakeSystem) Signer(string) (string, error)            { return "", nil }
 func (s *fakeSystem) DownloadOrigin(string) string             { return "" }
 func (s *fakeSystem) WingetPackages() []system.Package         { return nil }
 
@@ -91,7 +92,7 @@ func TestAddListRemove(t *testing.T) {
 		t.Fatalf("stored: %+v", dxvk)
 	}
 
-	_, out, _ := reforge(t, config, "list", "DXVK*")
+	_, out, _ := reforge(t, config, "list", "DXVK*", "--offline")
 	if !strings.Contains(out, "DXVK (Game)") || strings.Contains(out, "PhotoCraft") || !strings.Contains(out, game) {
 		t.Errorf("list: %q", out)
 	}
@@ -138,12 +139,21 @@ func TestUpdate(t *testing.T) {
 	useFakes(t, &github.Release{Tag: "v1.1.0", Assets: []github.Asset{{Name: "PhotoCraft-x64.msi", Digest: "sha256:x"}}},
 		system.Program{Name: "PhotoCraft", Version: "1.0.0", PerUser: true, MSI: true})
 
-	code, out, _ := reforge(t, config, "update", "--dry-run")
-	if code != 0 || !strings.Contains(out, "UpdateAvailable") || !strings.Contains(out, "NotInstalled") {
-		t.Fatalf("dry run: %d %q", code, out)
+	// list checks for updates, in words, and changes nothing
+	code, out, _ := reforge(t, config, "list")
+	if code != 0 || !strings.Contains(out, "1.0.0  ") || !strings.Contains(out, "v1.1.0") ||
+		!strings.Contains(out, "Update available") || !strings.Contains(out, "Not installed") {
+		t.Fatalf("list: %d %q", code, out)
 	}
 	if apps, _ := applist.Load(config); apps[0].HadDigest {
-		t.Error("a dry run must not save anything")
+		t.Error("list must not save anything")
+	}
+	var entries []listEntry
+	if _, out, _ := reforge(t, config, "list", "--json"); json.Unmarshal([]byte(out), &entries) != nil || entries[0].Status != "UpdateAvailable" {
+		t.Fatalf("list --json: %q", out)
+	}
+	if code, _, _ := reforge(t, config, "update", "--dry-run"); code != 2 {
+		t.Error("update --dry-run is gone; reforge list does that")
 	}
 
 	code, out, _ = reforge(t, config, "update", "Photo*", "--json")

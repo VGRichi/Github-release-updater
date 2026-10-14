@@ -131,6 +131,57 @@ func TestUpdateAlwaysAsksWhenEarlierReleasesHadAChecksum(t *testing.T) {
 	}
 }
 
+func TestUpdateLearnsWhoSignedTheApp(t *testing.T) {
+	te, app := installerCase(t)
+	te.sys.signer = "Storytold Ltd"
+	r := te.Update(app)
+	if r.Status != Updated || r.Note != "Checksum verified, signed by Storytold Ltd" || app.Publisher != "Storytold Ltd" {
+		t.Fatalf("got %+v, publisher %q", r, app.Publisher)
+	}
+}
+
+func TestUpdateAsksWhenTheSignerChanges(t *testing.T) {
+	tests := []struct {
+		signer, warning string
+		answer          int
+		status          Status
+		publisher       string
+	}{
+		{"Someone Else", "is signed by Someone Else", 1, Skipped, "Storytold Ltd"},   // No: nothing installed
+		{"", "isn't signed", 1, Skipped, "Storytold Ltd"},                            // no longer signed
+		{"Storytold Inc", "is signed by Storytold Inc", 0, Updated, "Storytold Inc"}, // Yes: the new signer is remembered
+	}
+	for _, tt := range tests {
+		te, app := installerCase(t)
+		app.Publisher, app.AllowUnverified = "Storytold Ltd", true // trusting never skips this
+		te.sys.signer = tt.signer
+		te.ask.answers = []int{tt.answer}
+		r := te.Update(app)
+		if r.Status != tt.status || app.Publisher != tt.publisher || len(te.warnings) == 0 || !strings.Contains(te.warnings[0], tt.warning) {
+			t.Errorf("signer %q: got %+v, publisher %q, warnings %v", tt.signer, r, app.Publisher, te.warnings)
+		}
+		if tt.status == Skipped && len(te.sys.runs) != 0 {
+			t.Errorf("signer %q: the installer ran", tt.signer)
+		}
+	}
+}
+
+func TestUpdateBrokenSignatureInstallsNothing(t *testing.T) {
+	te, app := installerCase(t)
+	te.sys.signerErr = errors.New("its digital signature isn't valid")
+	r := te.Update(app)
+	if r.Status != Failed || !strings.Contains(r.Note, "signature isn't valid") || len(te.sys.runs) != 0 {
+		t.Fatalf("got %+v, runs %v", r, te.sys.runs)
+	}
+}
+
+func TestUpdateNeverSignedAppIsUnaffected(t *testing.T) {
+	te, app := installerCase(t)
+	if r := te.Update(app); r.Status != Updated || r.Note != "Checksum verified" || app.Publisher != "" {
+		t.Fatalf("got %+v", r)
+	}
+}
+
 func TestUpdateChecksumMismatchInstallsNothing(t *testing.T) {
 	te, app := installerCase(t)
 	te.gh.payload = []byte("tampered")
@@ -146,8 +197,8 @@ func TestUpdateInstallerExitCodes(t *testing.T) {
 		status Status
 		note   string
 	}{
-		{3010, Updated, "Restart needed to finish"},
-		{1641, Updated, "Restart needed to finish"},
+		{3010, Updated, "Checksum verified. Restart needed to finish"},
+		{1641, Updated, "Checksum verified. Restart needed to finish"},
 		{1603, Failed, "Installer exit code 1603"},
 	}
 	for _, tt := range tests {

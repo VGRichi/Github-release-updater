@@ -50,6 +50,8 @@ type fakeSystem struct {
 	programs    []system.Program
 	after       []system.Program // the installed apps once an installer has run, if set
 	admin       bool
+	signer      string // who signed the installers
+	signerErr   error  // a broken signature
 	exitCode    int
 	runs        []run
 	origins     map[string]string // file -> download note
@@ -68,6 +70,7 @@ func (s *fakeSystem) RunInstaller(file, args string) (int, error) {
 }
 
 func (s *fakeSystem) IsAdmin() bool                     { return s.admin }
+func (s *fakeSystem) Signer(string) (string, error)     { return s.signer, s.signerErr }
 func (s *fakeSystem) DownloadOrigin(file string) string { return s.origins[file] }
 func (s *fakeSystem) WingetPackages() []system.Package {
 	s.wingetCalls++

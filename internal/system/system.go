@@ -25,6 +25,9 @@ type System interface {
 	Programs() ([]Program, error)
 	// RunInstaller runs an installer with silent arguments and waits for it (not for programs it starts).
 	RunInstaller(file, args string) (exitCode int, err error)
+	// Signer checks a file's digital signature: who signed it, "" when it isn't signed, and an error
+	// when the signature is broken or untrusted (like a file changed after it was signed).
+	Signer(file string) (string, error)
 	IsAdmin() bool
 	// DownloadOrigin is the note browsers add to downloads saying where they came from, or "".
 	DownloadOrigin(file string) string

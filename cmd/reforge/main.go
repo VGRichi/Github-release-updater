@@ -7,6 +7,7 @@ package main
 //go:generate go run github.com/tc-hib/go-winres@v0.3.3 simply --arch amd64,arm64 --manifest cli --icon ../../assets/reforge-app-icon-512.png --product-name Reforge --file-description Reforge --original-filename reforge.exe --copyright "(c) 2026 VGRichi. MIT License." --product-version "$REFORGE_VERSION" --file-version "$REFORGE_VERSION"
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,15 +19,13 @@ import (
 // version is set when building a release: go build -ldflags "-X main.version=1.0.0"
 var version = "dev"
 
-const usage = `Reforge keeps apps and game mods from GitHub releases up to date.
-
-Usage: reforge <command> [arguments] [options]
+const usage = `Usage: reforge <command> [arguments] [options]
 
 Commands:
   add <owner/repo>       start tracking an app, or a tool with --dest
   install <owner/repo>   install an app from GitHub for the first time, and track it
-  list [name...]         list what you're tracking
-  update [name...]       check for updates and install them (--dry-run to only check)
+  list [name...]         list what you track, and which have updates
+  update [name...]       install the updates
   find [folder...]       find installed apps and downloaded tools that come from GitHub
   remove <name...>       stop tracking (doesn't uninstall)
   version                show Reforge's version
@@ -43,19 +42,34 @@ var commands = map[string]func(*cli, []string) error{
 var help = map[string][2]string{
 	"add":     {"<owner/repo>", "Starts tracking an app or tool. With --dest it's an archive tool, extracted into that folder."},
 	"install": {"<owner/repo>...", "Installs an app from its latest GitHub release (asking first) and starts tracking it."},
-	"list":    {"[name...]", "Lists the apps and tools you're tracking."},
-	"update":  {"[name...]", "Updates your apps and tools to their latest GitHub release."},
+	"list":    {"[name...]", "Lists the apps and tools you track, with their installed and latest versions\nand folders. It checks GitHub for updates, but installs nothing."},
+	"update":  {"[name...]", "Installs the updates: your apps and tools go to their latest GitHub release.\nSee what has updates first with 'reforge list'."},
 	"find":    {"[folder...]", "Finds installed apps that link to GitHub, and apps and tools downloaded from GitHub\nreleases into your Downloads folder (or the folders given, two levels deep)."},
 	"remove":  {"<name...>", "Stops tracking apps. They stay installed."},
 }
 
+// color is whether the help screen's banner is in colour.
+var color bool
+
 func main() {
+	color = terminalColors(os.Stdout)
+	if len(os.Args) == 1 && startedByDoubleClick() {
+		// Opened from Explorer: without this, the window would show the help and close at once.
+		// Show the help, then keep the window as a PowerShell prompt to type commands in.
+		fmt.Print(banner(version, color), "\n", usage, "\nType reforge commands below. Close the window or type 'exit' when you're done.\n\n")
+		if runShell() {
+			return
+		}
+		fmt.Print(doubleClickHelp)
+		bufio.NewReader(os.Stdin).ReadString('\n')
+		return
+	}
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(stdout, usage)
+		fmt.Fprint(stdout, banner(version, color), "\n", usage)
 		return 0
 	}
 	if args[0] == "version" || args[0] == "--version" {
