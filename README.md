@@ -78,9 +78,7 @@ reforge update                        # install the updates
 reforge remove dxvk                   # stop tracking (doesn't uninstall)
 ```
 
-`reforge add` takes a name or `owner/repo`. With a name, it looks on your PC first (an installed app or a download from GitHub), then searches GitHub and asks you about the likeliest match. It also works out what you're tracking. An installed app is updated with its installer. A downloaded mod or tool, like DXVK or OptiScaler, is kept up to date where you keep it (it's found in your Downloads folder): new versions are downloaded next to the old ones, and extracted too if you extracted the old one. If you keep it elsewhere, give the folder: `reforge add doitsujin/dxvk D:\Mods`. To have its files copied into a game folder on every update instead, use `--dest "D:\Games\Witcher 3\bin\x64"`.
-
-Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. For more than GitHub's 60 checks an hour, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens) (no permissions needed).
+Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. For more than GitHub's 60 checks an hour, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens).
 
 ## Security
 
@@ -99,4 +97,4 @@ A checksum proves you got exactly the file on the release page, and a signature 
 
 ## License
 
-[MIT](LICENSE). Thanks to the Reddit commenters whose feedback shaped the security rules. Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
+[MIT](LICENSE). Want to help? See [CONTRIBUTING.md](CONTRIBUTING.md).
