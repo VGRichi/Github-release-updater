@@ -43,6 +43,8 @@ Update-ReforgeApp                                                  # update
 ```
 
 `-Name` is the app's name as shown in **Settings → Apps → Installed apps** (a partial name is fine).
+
+Not installed yet? `Install-ReforgeApp storytold/photocraft` installs the latest release (after asking) and starts tracking it.
 Apps installed for all users need PowerShell running as administrator to update. Apps installed only for your account, and archive tools in folders you own, don't.
 
 ## Commands
@@ -50,6 +52,7 @@ Apps installed for all users need PowerShell running as administrator to update.
 | Command | What it does |
 |---|---|
 | `Add-ReforgeApp` | Start tracking an app or tool |
+| `Install-ReforgeApp` | Install an app from GitHub for the first time, and track it |
 | `Get-ReforgeApp` | List what you're tracking |
 | `Update-ReforgeApp` | Check and install updates (`-WhatIf` to only check) |
 | `Find-ReforgeApp` | Find installed apps that link to GitHub |
