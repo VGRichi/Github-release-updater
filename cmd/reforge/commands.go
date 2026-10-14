@@ -172,7 +172,10 @@ func (c *cli) lookUp(listPath, name string) (string, error) {
 	asked := 0
 	for _, r := range repos {
 		release, err := e.GitHub.Latest(r.FullName, false)
-		if err != nil || release == nil {
+		if err != nil { // like GitHub's hourly limit: say so, rather than "no repository chosen"
+			return "", err
+		}
+		if release == nil { // nothing to track
 			continue
 		}
 		about := fmt.Sprintf("★ %d, latest %s", r.Stars, release.Tag)
@@ -462,7 +465,11 @@ func runFind(c *cli, args []string) error {
 		return c.json(found)
 	}
 	if len(found) == 0 {
-		fmt.Fprintln(c.stderr, "Nothing new from GitHub found.")
+		if len(apps) == 0 {
+			fmt.Fprintln(c.stderr, "Nothing from GitHub found on this PC. Add apps and mods by name: reforge add <name>")
+		} else {
+			fmt.Fprintf(c.stderr, "Nothing new: everything from GitHub that Reforge can see is already tracked (%d in your list).\n", len(apps))
+		}
 		return nil
 	}
 	var rows [][]string

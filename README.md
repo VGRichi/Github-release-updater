@@ -17,6 +17,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/VGRichi/Reforge" alt="MIT license"></a>
 </p>
 
+<p align="center">
+  <img src="assets/screenshots/reforge-list.png" alt="reforge list: two installed apps and two downloaded mods (DXVK, OptiScaler), with their installed and latest versions" width="760">
+</p>
+
 ## Features
 
 - **Downloads and installs apps** straight from a GitHub repository's latest release

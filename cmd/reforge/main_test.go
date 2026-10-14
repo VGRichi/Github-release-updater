@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,9 +18,10 @@ import (
 type fakeReleases struct {
 	release *github.Release
 	repos   []github.Repo
+	err     error // what Latest fails with, like GitHub's hourly limit
 }
 
-func (f *fakeReleases) Latest(string, bool) (*github.Release, error) { return f.release, nil }
+func (f *fakeReleases) Latest(string, bool) (*github.Release, error) { return f.release, f.err }
 func (f *fakeReleases) Search(string) ([]github.Repo, error)         { return f.repos, nil }
 func (f *fakeReleases) Download(a github.Asset, dir string) (string, error) {
 	file := filepath.Join(dir, a.Name)
@@ -323,5 +325,33 @@ func TestChooseStopsAskingWhenInputEnds(t *testing.T) {
 	}
 	if strings.Count(errOut.String(), "[Y] Yes") != 1 || strings.Count(errOut.String(), "can't ask here") != 2 {
 		t.Errorf("asked once, then answered No without asking: %q", errOut.String())
+	}
+}
+
+func TestAddByNameShowsGitHubErrors(t *testing.T) {
+	useFakes(t, nil)
+	realEngine := newEngine
+	newEngine = func(c *cli) *core.Engine {
+		e := realEngine(c)
+		gh := e.GitHub.(*fakeReleases)
+		gh.repos = []github.Repo{{FullName: "doitsujin/dxvk", Stars: 18285}}
+		gh.err = errors.New("GitHub's limit of about 60 checks an hour was reached; set GITHUB_TOKEN to a GitHub token for more")
+		return e
+	}
+	code, _, errOut := reforge(t, configIn(t), "add", "dxvk")
+	if code != 1 || !strings.Contains(errOut, "set GITHUB_TOKEN") || strings.Contains(errOut, "no repository chosen") {
+		t.Errorf("%d %q", code, errOut)
+	}
+}
+
+func TestFindSaysWhyNothingIsNew(t *testing.T) {
+	useFakes(t, nil)
+	config := configIn(t)
+	if _, _, errOut := reforge(t, config, "find"); !strings.Contains(errOut, "Nothing from GitHub found on this PC") {
+		t.Errorf("empty list: %q", errOut)
+	}
+	applist.Save(config, []*applist.App{{Name: "A", Repository: "o/a"}, {Name: "B", Repository: "o/b"}})
+	if _, _, errOut := reforge(t, config, "find"); !strings.Contains(errOut, "already tracked (2 in your list)") {
+		t.Errorf("tracked apps: %q", errOut)
 	}
 }
