@@ -6,8 +6,9 @@
 </p>
 
 <p align="center">
-  <b>Download, install and update apps and game mods from GitHub releases.</b><br>
-  Like winget, for everything that's only on GitHub.
+  <b>A package manager for GitHub releases.</b><br>
+  Install and update any app or game mod straight from its GitHub releases.<br>
+  No catalog, no waiting for someone to package it.
 </p>
 
 <p align="center">
@@ -22,7 +23,7 @@
 - **Keeps them up to date**: installed apps (`.msi` / `.exe`) update silently, with the right installer for your PC (x64 or ARM64)
 - **Updates game mods and tools** like DXVK and OptiScaler (`.zip` / `.7z` / `.tar.gz`) in your game folders, with backups and without touching your settings
 - **Finds what you already have**: installed apps that link to GitHub, and GitHub downloads in your Downloads folder
-- **Verifies every download** against GitHub's SHA256 checksums, and never installs an unverified file without asking
+- **Verifies every download** against GitHub's SHA256 checksums and installers' digital signatures, and never installs an unverified file without asking
 - **One small program**, nothing else to install
 
 Installer apps are Windows-only for now; game mods and tools work on Windows, macOS and Linux.

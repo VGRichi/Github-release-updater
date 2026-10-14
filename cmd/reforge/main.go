@@ -1,4 +1,5 @@
-// Command reforge keeps apps and tools from GitHub releases up to date.
+// Command reforge is a package manager for GitHub releases: it installs and updates apps and game
+// mods straight from them.
 package main
 
 // reforge.exe's icon is in the rsrc_windows_*.syso files, which go build links in. Remake them after

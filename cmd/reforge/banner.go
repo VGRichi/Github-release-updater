@@ -42,9 +42,9 @@ func banner(ver string, color bool) string {
 		"",
 		paint(bold, "Reforge "+ver),
 		"",
-		paint(dim, "Download, install and update"),
-		paint(dim, "apps and game mods from"),
+		paint(dim, "A package manager for"),
 		paint(dim, "GitHub releases."),
+		"",
 		"",
 		paint(dim, "github.com/VGRichi/Reforge"),
 	}
