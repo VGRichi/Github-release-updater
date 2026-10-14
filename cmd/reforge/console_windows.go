@@ -45,6 +45,13 @@ func runShell() bool {
 	return true
 }
 
+// typedInput reports whether f is a console someone types in. Not a file, a pipe, or NUL (which
+// Windows counts as a character device, like a console).
+func typedInput(f *os.File) bool {
+	var mode uint32
+	return windows.GetConsoleMode(windows.Handle(f.Fd()), &mode) == nil
+}
+
 var getConsoleProcessList = windows.NewLazySystemDLL("kernel32.dll").NewProc("GetConsoleProcessList")
 
 // startedByDoubleClick reports whether Reforge has a console window to itself, which is what happens

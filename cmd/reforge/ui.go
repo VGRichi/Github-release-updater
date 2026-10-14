@@ -24,9 +24,7 @@ type cli struct {
 func newCLI(stdin io.Reader, stdout, stderr io.Writer) *cli {
 	c := &cli{stdin: bufio.NewReader(stdin), stdout: stdout, stderr: stderr}
 	if f, ok := stdin.(*os.File); ok {
-		if info, err := f.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
-			c.interactive = true
-		}
+		c.interactive = typedInput(f)
 	}
 	return c
 }
@@ -59,8 +57,9 @@ func (c *cli) Choose(question string, answers []string, def int) int {
 		line, err := c.stdin.ReadString('\n')
 		line = strings.ToLower(strings.TrimSpace(line))
 		if line == "" {
-			if err != nil { // input closed
+			if err != nil { // the input ended: nobody is there to answer the next questions either
 				fmt.Fprintln(c.stderr)
+				c.interactive = false
 			}
 			return def
 		}

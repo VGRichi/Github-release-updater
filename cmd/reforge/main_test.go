@@ -311,3 +311,17 @@ func TestAddByNameAsksAboutGitHubMatches(t *testing.T) {
 		t.Errorf("%d %q", code, errOut2)
 	}
 }
+
+func TestChooseStopsAskingWhenInputEnds(t *testing.T) {
+	var errOut bytes.Buffer
+	c := newCLI(strings.NewReader(""), &bytes.Buffer{}, &errOut)
+	c.interactive = true // looked like a terminal, but the input is empty
+	for range 3 {
+		if c.Choose("Track it?", []string{"Yes", "No"}, 1) != 1 {
+			t.Fatal("want the default, No")
+		}
+	}
+	if strings.Count(errOut.String(), "[Y] Yes") != 1 || strings.Count(errOut.String(), "can't ask here") != 2 {
+		t.Errorf("asked once, then answered No without asking: %q", errOut.String())
+	}
+}

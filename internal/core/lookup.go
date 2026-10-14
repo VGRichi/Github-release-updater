@@ -28,16 +28,22 @@ func (e *Engine) LocalRepo(name string, folders []string) (string, error) {
 }
 
 // sameName reports whether a typed name and a repository's name are the same, ignoring case and
-// punctuation ("optiscaler" and "OptiScaler", "notepad++" and "notepad-plus-plus" are not).
+// punctuation, with + spelled out ("optiscaler" and "OptiScaler", "notepad++" and "notepad-plus-plus").
 func sameName(name, leaf string) bool {
 	clean := func(s string) string { return strings.ToLower(notAlphanumeric.ReplaceAllString(s, "")) }
-	return clean(name) != "" && clean(name) == clean(leaf)
+	return clean(name) != "" && clean(searchWords(name)) == clean(leaf)
+}
+
+// searchWords is a name as words GitHub's search understands: it ignores symbols, so "notepad++" would
+// find nothing, while "notepad plus plus" finds notepad-plus-plus.
+func searchWords(name string) string {
+	return strings.Join(strings.Fields(notAlphanumeric.ReplaceAllString(strings.ReplaceAll(name, "+", " plus "), " ")), " ")
 }
 
 // SearchRepos searches GitHub for repositories with the name, most likely first: exactly that name
 // first, then by stars; archived ones last.
 func (e *Engine) SearchRepos(name string) ([]github.Repo, error) {
-	repos, err := e.GitHub.Search(name)
+	repos, err := e.GitHub.Search(searchWords(name))
 	if err != nil {
 		return nil, err
 	}
