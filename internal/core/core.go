@@ -24,6 +24,7 @@ import (
 type Releases interface {
 	Latest(repo string, prerelease bool) (*github.Release, error)
 	Download(a github.Asset, dir string) (string, error)
+	Search(words string) ([]github.Repo, error)
 }
 
 // Asker asks the user to pick an answer, returning its index. When nobody can answer (a scheduled task,
@@ -112,7 +113,7 @@ func (e *Engine) Update(app *applist.App) Result {
 
 func (e *Engine) update(app *applist.App, r *Result) error {
 	var program *system.Program
-	if !app.IsArchive() {
+	if app.IsInstaller() {
 		programs, err := e.installedPrograms()
 		if err != nil {
 			return err
@@ -131,8 +132,11 @@ func (e *Engine) update(app *applist.App, r *Result) error {
 		return nil
 	}
 	r.Latest = release.Tag
-	if app.IsArchive() {
+	switch {
+	case app.IsArchive():
 		return e.updateArchive(app, release, r)
+	case app.IsDownload():
+		return e.updateDownload(app, release, r)
 	}
 	return e.updateInstaller(app, release, program, r)
 }

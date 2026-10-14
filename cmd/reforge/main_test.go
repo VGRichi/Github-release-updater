@@ -14,9 +14,13 @@ import (
 	"github.com/VGRichi/Reforge/internal/system"
 )
 
-type fakeReleases struct{ release *github.Release }
+type fakeReleases struct {
+	release *github.Release
+	repos   []github.Repo
+}
 
 func (f *fakeReleases) Latest(string, bool) (*github.Release, error) { return f.release, nil }
+func (f *fakeReleases) Search(string) ([]github.Repo, error)         { return f.repos, nil }
 func (f *fakeReleases) Download(a github.Asset, dir string) (string, error) {
 	file := filepath.Join(dir, a.Name)
 	return file, os.WriteFile(file, []byte("bytes"), 0o644)
@@ -31,16 +35,26 @@ func (s *fakeSystem) Signer(string) (string, error)            { return "", nil 
 func (s *fakeSystem) DownloadOrigin(string) string             { return "" }
 func (s *fakeSystem) WingetPackages() []system.Package         { return nil }
 
-// useFakes makes the commands use a fake GitHub (one release) and a PC with these installed apps.
-func useFakes(t *testing.T, rel *github.Release, programs ...system.Program) {
-	real := newEngine
-	t.Cleanup(func() { newEngine = real })
+// useFakes makes the commands use a fake GitHub (one release), a PC with these installed apps, and an
+// empty Downloads folder, which it returns.
+func useFakes(t *testing.T, rel *github.Release, programs ...system.Program) string {
+	realEngine, realDownloads := newEngine, downloadsFolder
+	t.Cleanup(func() { newEngine, downloadsFolder = realEngine, realDownloads })
+	downloads := t.TempDir()
+	downloadsFolder = func() string { return downloads }
 	newEngine = func(c *cli) *core.Engine {
 		return &core.Engine{
-			GitHub: &fakeReleases{rel}, System: &fakeSystem{programs}, Ask: c, Arch: "amd64",
+			GitHub: &fakeReleases{release: rel}, System: &fakeSystem{programs}, Ask: c, Arch: "amd64",
 			WorkRoot: t.TempDir(), BackupsToKeep: 3, Progress: c.progress, Verbose: c.detail, Warn: c.warn,
 		}
 	}
+	return downloads
+}
+
+// photoCraft is a release with an installer and an archive, for an app that's installed.
+func photoCraft(t *testing.T) string {
+	return useFakes(t, &github.Release{Tag: "v1.1.0", Assets: []github.Asset{{Name: "PhotoCraft-x64.msi"}, {Name: "PhotoCraft-win64.zip"}}},
+		system.Program{Name: "PhotoCraft 1.0.0", Version: "1.0.0", PerUser: true, MSI: true})
 }
 
 // reforge runs the command with a list file in a temp folder and returns exit code, stdout, stderr.
@@ -75,9 +89,12 @@ func TestHelpVersionAndUnknownCommands(t *testing.T) {
 }
 
 func TestAddListRemove(t *testing.T) {
+	photoCraft(t)
 	config := configIn(t)
 	game := t.TempDir()
-	if code, out, errOut := reforge(t, config, "add", "https://github.com/storytold/photocraft", "--name", "PhotoCraft"); code != 0 || out != "Tracking PhotoCraft (storytold/photocraft)\n" {
+	// Installed, and its release has an installer: tracked by the name Installed apps shows
+	if code, out, errOut := reforge(t, config, "add", "https://github.com/storytold/photocraft"); code != 0 ||
+		out != "Tracking PhotoCraft (storytold/photocraft): updated with its installer\n" {
 		t.Fatalf("add: %d %q %q", code, out, errOut)
 	}
 	// Flags before or after the repository, given more than once
@@ -88,8 +105,8 @@ func TestAddListRemove(t *testing.T) {
 	}
 	apps, _ := applist.Load(config)
 	dxvk := apps[1]
-	if !dxvk.IsArchive() || dxvk.Destination[0] != game || dxvk.Subfolder != "x64" || dxvk.Rename["a.dll"] != "b.dll" || len(dxvk.Include) != 2 {
-		t.Fatalf("stored: %+v", dxvk)
+	if !apps[0].IsInstaller() || !dxvk.IsArchive() || dxvk.Destination[0] != game || dxvk.Subfolder != "x64" || dxvk.Rename["a.dll"] != "b.dll" || len(dxvk.Include) != 2 {
+		t.Fatalf("stored: %+v %+v", apps[0], dxvk)
 	}
 
 	_, out, _ := reforge(t, config, "list", "DXVK*", "--offline")
@@ -107,12 +124,15 @@ func TestAddListRemove(t *testing.T) {
 }
 
 func TestAddRefuses(t *testing.T) {
+	photoCraft(t)
 	config := configIn(t)
 	reforge(t, config, "add", "storytold/photocraft")
 	tests := map[string][]string{
 		"a name already in the list":  {"add", "o/photocraft"},
 		"something that isn't a repo": {"add", "not a repo"},
-		"a folder that doesn't exist": {"add", "o/r", "--dest", filepath.Join(t.TempDir(), "missing")},
+		"a folder that doesn't exist": {"add", "o/r", filepath.Join(t.TempDir(), "missing")},
+		"a --dest that doesn't exist": {"add", "o/r", "--dest", filepath.Join(t.TempDir(), "missing")},
+		"a folder and --dest":         {"add", "o/r", t.TempDir(), "--dest", t.TempDir()},
 		"a bad --rename":              {"add", "o/r", "--rename", "nope"},
 		"no repository":               {"add"},
 	}
@@ -120,6 +140,49 @@ func TestAddRefuses(t *testing.T) {
 		if code, _, _ := reforge(t, config, args...); code == 0 {
 			t.Errorf("%s: want an error", desc)
 		}
+	}
+}
+
+func TestAddFindsADownloadedToolInDownloads(t *testing.T) {
+	// DXVK's releases are archives; you extracted 3.1.1 into Downloads\Mods
+	downloads := useFakes(t, &github.Release{Tag: "v3.1.2", Assets: []github.Asset{{Name: "dxvk-3.1.2.tar.gz"}}})
+	mods := filepath.Join(downloads, "Mods")
+	os.MkdirAll(filepath.Join(mods, "dxvk-3.1.1", "x64"), 0o755)
+	config := configIn(t)
+	code, out, errOut := reforge(t, config, "add", "doitsujin/dxvk")
+	if code != 0 || !strings.Contains(out, "you have 3.1.1 in "+mods) {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+	apps, _ := applist.Load(config)
+	if !apps[0].IsDownload() || apps[0].Folder != mods || apps[0].InstalledVersion != "3.1.1" || apps[0].Name != "dxvk" {
+		t.Fatalf("stored: %+v", apps[0])
+	}
+	if _, out, _ := reforge(t, config, "list", "--offline"); !strings.Contains(out, "3.1.1") || !strings.Contains(out, mods) {
+		t.Errorf("list: %q", out)
+	}
+
+	// Not downloaded yet: it goes into Downloads
+	_, out, _ = reforge(t, configIn(t), "add", "optiscaler/OptiScaler")
+	if !strings.Contains(out, "the next update downloads it into "+downloads) {
+		t.Errorf("not downloaded yet: %q", out)
+	}
+}
+
+func TestAddWithAFolder(t *testing.T) {
+	useFakes(t, nil) // no release check needed: the folder says it's a download
+	config := configIn(t)
+	mods := t.TempDir()
+	os.WriteFile(filepath.Join(mods, "Optiscaler_0.9.4-final.7z"), nil, 0o644)
+	if code, out, errOut := reforge(t, config, "add", "optiscaler/OptiScaler", mods); code != 0 || !strings.Contains(out, "you have 0.9.4") {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+}
+
+func TestAddAnAppThatIsNotInstalled(t *testing.T) {
+	useFakes(t, &github.Release{Tag: "v1.0", Assets: []github.Asset{{Name: "Tool-x64-setup.exe"}}})
+	code, _, errOut := reforge(t, configIn(t), "add", "o/tool")
+	if code != 1 || !strings.Contains(errOut, "Install it with: reforge install o/tool") {
+		t.Errorf("%d %q", code, errOut)
 	}
 }
 
@@ -217,5 +280,34 @@ func TestParseFlagsAnywhere(t *testing.T) {
 	pos, err := parse(fs, []string{"a", "--json", "b"})
 	if err != nil || !*asJSON || strings.Join(pos, ",") != "a,b" {
 		t.Errorf("got %v %v %v", pos, *asJSON, err)
+	}
+}
+
+func TestAddByNameAsksAboutGitHubMatches(t *testing.T) {
+	useFakes(t, &github.Release{Tag: "v3.1.1", Assets: []github.Asset{{Name: "dxvk-3.1.1.tar.gz"}}})
+	repos := []github.Repo{{FullName: "ValveSoftware/dxvk", Stars: 488}, {FullName: "doitsujin/dxvk", Stars: 18285, Description: "Vulkan-based D3D"}}
+	realEngine := newEngine
+	newEngine = func(c *cli) *core.Engine {
+		e := realEngine(c)
+		e.GitHub.(*fakeReleases).repos = repos
+		return e
+	}
+
+	// The likeliest is asked about first (doitsujin/dxvk, more stars); someone answers No, then Yes
+	var out, errOut bytes.Buffer
+	c := newCLI(strings.NewReader("n\ny\n"), &out, &errOut)
+	c.interactive = true
+	repo, err := c.lookUp(configIn(t), "dxvk")
+	if err != nil || repo != "ValveSoftware/dxvk" {
+		t.Fatalf("got %q, %v", repo, err)
+	}
+	if q := errOut.String(); !strings.Contains(q, "Is it doitsujin/dxvk? ★ 18285, latest v3.1.1: Vulkan-based D3D") {
+		t.Errorf("questions: %q", q)
+	}
+
+	// Nobody to answer: the safe answer is No, asked once
+	code, _, errOut2 := reforge(t, configIn(t), "add", "dxvk")
+	if code != 1 || strings.Count(errOut2, "can't ask here") != 1 || !strings.Contains(errOut2, "add it as owner/repo") {
+		t.Errorf("%d %q", code, errOut2)
 	}
 }

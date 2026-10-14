@@ -17,8 +17,9 @@ import (
 type App struct {
 	Name             string            `json:"Name"`
 	Repository       string            `json:"Repository"`
-	Type             string            `json:"Type,omitempty"` // "archive", or empty for an installer app
+	Type             string            `json:"Type,omitempty"` // "archive", "download", or empty for an installer app
 	Destination      Strings           `json:"Destination,omitempty"`
+	Folder           string            `json:"Folder,omitempty"` // downloads: where the release's archives are kept
 	Subfolder        string            `json:"Subfolder,omitempty"`
 	Pattern          string            `json:"Pattern,omitempty"`
 	Include          Strings           `json:"Include,omitempty"`
@@ -32,8 +33,15 @@ type App struct {
 	InstalledVersion string            `json:"InstalledVersion,omitempty"`
 }
 
-// IsArchive reports whether the app is an archive tool (extracted into folders) rather than an installer app.
+// IsArchive reports whether the app is an archive tool whose files are copied into folders (--dest).
 func (a *App) IsArchive() bool { return a.Type == "archive" }
+
+// IsDownload reports whether the app is a downloaded archive kept up to date in its folder: each new
+// version's archive is downloaded next to the old ones, and extracted if the old one was.
+func (a *App) IsDownload() bool { return a.Type == "download" }
+
+// IsInstaller reports whether the app is installed with an installer (.msi / .exe).
+func (a *App) IsInstaller() bool { return !a.IsArchive() && !a.IsDownload() }
 
 // Strings is a list that also reads a single string, which hand-edited lists often have.
 type Strings []string

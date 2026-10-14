@@ -23,8 +23,8 @@ var version = "dev"
 const usage = `Usage: reforge <command> [arguments] [options]
 
 Commands:
-  add <owner/repo>       start tracking an app, or a tool with --dest
-  install <owner/repo>   install an app from GitHub for the first time, and track it
+  add <name>             track an app, mod or tool you already have (a name or owner/repo)
+  install <owner/repo>   download and install an app, and track it
   list [name...]         list what you track, and which have updates
   update [name...]       install the updates
   find [folder...]       find installed apps and downloaded tools that come from GitHub
@@ -41,7 +41,14 @@ var commands = map[string]func(*cli, []string) error{
 
 // help is each command's arguments and description, for 'reforge <command> --help'.
 var help = map[string][2]string{
-	"add":     {"<owner/repo>", "Starts tracking an app or tool. With --dest it's an archive tool, extracted into that folder."},
+	"add": {"<name or owner/repo> [folder]", "Starts tracking an app, mod or tool you already have. With just a name, Reforge looks on your\n" +
+		"PC (installed apps, downloads from GitHub), then searches GitHub and asks about each match.\n" +
+		"It works out which kind it is:\n" +
+		"  - an installed app is updated with its installer;\n" +
+		"  - a downloaded mod or tool (a .zip, .7z or .tar.gz) is kept up to date where you keep it. It's\n" +
+		"    looked for in your Downloads folder, or give the folder. New versions are downloaded there,\n" +
+		"    and extracted too if you extracted the old one.\n" +
+		"With --dest, its files are copied into that folder (like a game's) on every update instead."},
 	"install": {"<owner/repo>...", "Installs an app from its latest GitHub release (asking first) and starts tracking it."},
 	"list":    {"[name...]", "Lists the apps and tools you track, with their installed and latest versions\nand folders. It checks GitHub for updates, but installs nothing."},
 	"update":  {"[name...]", "Installs the updates: your apps and tools go to their latest GitHub release.\nSee what has updates first with 'reforge list'."},

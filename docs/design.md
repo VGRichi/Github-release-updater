@@ -42,6 +42,15 @@ from `GITHUB_TOKEN` or `GH_TOKEN` only, never a flag, so it doesn't end up in sh
   asks (default No, never skipped by `--yes` or trusting the app), since a hacked account can publish a
   release with a valid checksum but not with the developer's signature.
 - **`reforge list`** checks GitHub (installed and latest version per app), replacing `update --dry-run`.
+- **Downloads** (`Type: download`, `Folder`): a release of archives (DXVK, OptiScaler) kept up to date
+  where you keep it. New archives go next to the old ones; if the old version was extracted (a folder
+  named like `dxvk-3.1.1`), the new one is too and the old folder moves to the backups.
+- **`reforge add` works out the kind**: installed + installer in the release = installer app; a release
+  of archives = download, found in Downloads (two levels deep) with the version read from names; a
+  folder argument = download there; `--dest` = copied into folders.
+- **`reforge add <name>`**: the repository comes from this PC (an installed app linking to GitHub, a
+  download's note), else from GitHub's search, ranked exact name first, then stars, archived last;
+  each match with releases is asked about (Yes/No, up to 5; nobody to ask = No).
 - **Double-click** (Windows): shows the help and turns the window into a PowerShell prompt, instead of
   a window that closes at once.
 

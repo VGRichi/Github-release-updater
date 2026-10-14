@@ -199,9 +199,9 @@ func TestFindInstalledApps(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Candidate{
-		{"PhotoCraft", "storytold/photocraft", "1.0.0", "Installer"},
-		{"PdfCraft", "storytold/pdfcraft", "2.0", "Installer"},
-		{"HelpOnly", "someone/helponly", "3.0", "Installer"},
+		{"PhotoCraft", "storytold/photocraft", "1.0.0", "Installer", ""},
+		{"PdfCraft", "storytold/pdfcraft", "2.0", "Installer", ""},
+		{"HelpOnly", "someone/helponly", "3.0", "Installer", ""},
 	}
 	if len(found) != len(want) {
 		t.Fatalf("got %v", found)
@@ -274,7 +274,7 @@ func TestFindDownloadedArchiveTool(t *testing.T) {
 	add("Optiscaler_0.9.3.7z", "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.3", 30*24*time.Hour)
 	add("Mods/Optiscaler_0.9.4.7z", "https://github.com/optiscaler/OptiScaler/releases/tag/v0.9.4", 0)
 	found, _ := te.Find([]string{dir}, notTracked)
-	if len(found) != 1 || found[0] != (Candidate{"OptiScaler", "optiscaler/OptiScaler", "v0.9.4", "Archive"}) {
+	if len(found) != 1 || found[0] != (Candidate{"OptiScaler", "optiscaler/OptiScaler", "v0.9.4", "Archive", filepath.Join(dir, "Mods")}) {
 		t.Fatalf("got %v", found)
 	}
 }
@@ -284,7 +284,7 @@ func TestFindDownloadedInstallerOfAnInstalledApp(t *testing.T) {
 	add("GridCraft_0.5.0_x64-setup.exe", "https://github.com/storytold/gridcraft/releases/tag/v0.5.0", 0)
 	add("npp.8.9.8.1.Installer.x64.exe", "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/tag/v8.9.8.1", time.Hour)
 	found, _ := te.Find([]string{dir}, notTracked)
-	if len(found) != 2 || found[0] != (Candidate{"GridCraft", "storytold/gridcraft", "0.5.0", "Installer"}) ||
+	if len(found) != 2 || found[0] != (Candidate{"GridCraft", "storytold/gridcraft", "0.5.0", "Installer", ""}) ||
 		found[1].Name != "Notepad++ (64-bit x64)" {
 		t.Fatalf("got %v", found)
 	}

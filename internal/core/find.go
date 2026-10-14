@@ -49,7 +49,8 @@ type Candidate struct {
 	Name       string `json:"name"`
 	Repository string `json:"repository"`
 	Version    string `json:"version"`
-	Type       string `json:"type"` // "Installer" or "Archive"
+	Type       string `json:"type"`             // "Installer" or "Archive"
+	Folder     string `json:"folder,omitempty"` // archives: the folder the download is in
 }
 
 var (
@@ -96,7 +97,7 @@ func (e *Engine) Find(folders []string, tracked func(repo string) bool) ([]Candi
 			continue
 		}
 		seen[strings.ToLower(repo)] = true
-		found = append(found, Candidate{BaseName(p.Name), repo, p.Version, "Installer"})
+		found = append(found, Candidate{Name: BaseName(p.Name), Repository: repo, Version: p.Version, Type: "Installer"})
 	}
 
 	for _, d := range e.downloads(folders) {
@@ -105,7 +106,7 @@ func (e *Engine) Find(folders []string, tracked func(repo string) bool) ([]Candi
 		}
 		if pick.IsArchive(d.file) {
 			seen[strings.ToLower(d.repo)] = true
-			found = append(found, Candidate{repoLeaf(d.repo), d.repo, d.tag, "Archive"})
+			found = append(found, Candidate{Name: repoLeaf(d.repo), Repository: d.repo, Version: d.tag, Type: "Archive", Folder: d.dir})
 			continue
 		}
 		p := downloadedProgram(programs, d)
@@ -113,12 +114,12 @@ func (e *Engine) Find(folders []string, tracked func(repo string) bool) ([]Candi
 			continue
 		}
 		seen[strings.ToLower(d.repo)] = true
-		found = append(found, Candidate{BaseName(p.Name), d.repo, p.Version, "Installer"})
+		found = append(found, Candidate{Name: BaseName(p.Name), Repository: d.repo, Version: p.Version, Type: "Installer"})
 	}
 	return found, nil
 }
 
-type download struct{ file, repo, tag string }
+type download struct{ file, dir, repo, tag string }
 
 // downloads lists files downloaded from GitHub releases, newest first so each repository's latest
 // download wins. Browsers note where each download came from (on Windows, the Mark of the Web);
@@ -165,7 +166,7 @@ func (e *Engine) downloads(folders []string) []download {
 		if err != nil {
 			tag = m[2]
 		}
-		list = append(list, download{filepath.Base(f.path), m[1], tag})
+		list = append(list, download{filepath.Base(f.path), filepath.Dir(f.path), m[1], tag})
 	}
 	return list
 }

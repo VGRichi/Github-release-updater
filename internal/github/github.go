@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -141,6 +142,24 @@ func (c *Client) Download(a Asset, dir string) (string, error) {
 		return "", fmt.Errorf("checksum mismatch for %s. Nothing was installed", a.Name)
 	}
 	return file, nil
+}
+
+// Repo is a repository found by Search.
+type Repo struct {
+	FullName    string `json:"full_name"`
+	Description string `json:"description"`
+	Stars       int    `json:"stargazers_count"`
+	Archived    bool   `json:"archived"`
+}
+
+// Search finds repositories with the words in their name, in GitHub's order of relevance (forks are
+// left out). GitHub allows about 10 searches a minute without a token.
+func (c *Client) Search(words string) ([]Repo, error) {
+	var found struct {
+		Items []Repo `json:"items"`
+	}
+	err := c.get("/search/repositories?per_page=20&q="+url.QueryEscape(words+" in:name"), &found)
+	return found.Items, err
 }
 
 var (
