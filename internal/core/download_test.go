@@ -241,3 +241,15 @@ func TestSearchReposRanksTheLikeliestFirst(t *testing.T) {
 		t.Errorf("got  %v\nwant %s", got, want)
 	}
 }
+
+func TestSearchWords(t *testing.T) {
+	tests := map[string]string{"notepad++": "notepad plus plus", "dxvk": "dxvk", "  Photo-Craft ": "Photo Craft", "c#": "c"}
+	for in, want := range tests {
+		if got := searchWords(in); got != want {
+			t.Errorf("searchWords(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if !sameName("notepad++", "notepad-plus-plus") || !sameName("OptiScaler", "optiscaler") || sameName("notepad", "notepad-plus-plus") {
+		t.Error("sameName")
+	}
+}
