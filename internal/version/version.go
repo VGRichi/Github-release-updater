@@ -50,14 +50,6 @@ func Same(a, b string) bool {
 	return va != nil && vb != nil && Compare(va, vb) == 0
 }
 
-func (v Version) String() string {
-	parts := make([]string, len(v))
-	for i, n := range v {
-		parts[i] = strconv.Itoa(n)
-	}
-	return strings.Join(parts, ".")
-}
-
 func part(v Version, i int) int {
 	if i < len(v) {
 		return v[i]

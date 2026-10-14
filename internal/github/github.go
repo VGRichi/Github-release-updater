@@ -17,10 +17,9 @@ import (
 
 // Release is a GitHub release.
 type Release struct {
-	Tag        string  `json:"tag_name"`
-	Draft      bool    `json:"draft"`
-	Prerelease bool    `json:"prerelease"`
-	Assets     []Asset `json:"assets"`
+	Tag    string  `json:"tag_name"`
+	Draft  bool    `json:"draft"`
+	Assets []Asset `json:"assets"`
 }
 
 // Asset is a file attached to a release. Digest is GitHub's checksum, like "sha256:ab12...".

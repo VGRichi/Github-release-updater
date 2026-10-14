@@ -1,3 +1,3 @@
-out/
-dist/
-*.exe
+# What `go build ./cmd/reforge` makes
+/reforge
+/reforge.exe

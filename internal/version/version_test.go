@@ -1,21 +1,27 @@
 package version
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestParse(t *testing.T) {
-	tests := []struct{ text, want string }{
-		{"v1.2.3", "1.2.3"},
-		{"1.2.3.4", "1.2.3.4"},
-		{"2", "2"},
-		{"release-2024.10", "2024.10"},
-		{"1.2.3.4.5", "1.2.3.4"},
-		{"1.2.0-beta3", "1.2.0"},
-		{"App2-v1.3", "2"}, // the first number, even inside a name
-		{"v2.56.0.windows.2", "2.56.0"},
+	tests := []struct {
+		text string
+		want Version
+	}{
+		{"v1.2.3", Version{1, 2, 3}},
+		{"1.2.3.4", Version{1, 2, 3, 4}},
+		{"2", Version{2}},
+		{"release-2024.10", Version{2024, 10}},
+		{"1.2.3.4.5", Version{1, 2, 3, 4}},
+		{"1.2.0-beta3", Version{1, 2, 0}},
+		{"App2-v1.3", Version{2}}, // the first number, even inside a name
+		{"v2.56.0.windows.2", Version{2, 56, 0}},
 	}
 	for _, tt := range tests {
-		if got := Parse(tt.text).String(); got != tt.want {
-			t.Errorf("Parse(%q) = %q, want %q", tt.text, got, tt.want)
+		if got := Parse(tt.text); !slices.Equal(got, tt.want) {
+			t.Errorf("Parse(%q) = %v, want %v", tt.text, got, tt.want)
 		}
 	}
 	for _, text := range []string{"nightly", ""} {
