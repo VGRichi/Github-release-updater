@@ -725,10 +725,11 @@ function Install-ReforgeApp {
         if (-not $nameFound) { $app.Name = $repo.Split('/')[1] }
         $result.Name = $app.Name
         if ($result.Status -eq 'Installed') {
+            # Tracking it under a guessed name would only make every update say NotInstalled
             if (-not $nameFound) {
-                Write-Warning "Couldn't see the app in Installed apps, so it's tracked as '$($app.Name)'. If Update-ReforgeApp says NotInstalled, add it again with the name Settings shows: Add-ReforgeApp $repo -Name '<name>' -Force"
-            }
-            if ($apps | Where-Object Name -eq $app.Name) {
+                $result.Note += '. Not tracked'
+                Write-Warning "Installed, but it didn't show up as a new app in Installed apps (was it already installed?), so it isn't tracked. Track it with the name Settings shows: Add-ReforgeApp $repo -Name '<name>'"
+            } elseif ($apps | Where-Object Name -eq $app.Name) {
                 Write-Warning "'$($app.Name)' is already in the list, so this app isn't tracked. Track it with Add-ReforgeApp $repo -Name '<another name>'."
             } else {
                 $apps.Add($app)
@@ -777,10 +778,10 @@ function Find-ReforgeApp {
         [ValidateNotNullOrEmpty()][string]$ConfigPath = $script:DefaultConfigPath
     )
     $tracked = @(Read-AppList $ConfigPath | ForEach-Object { $_.Repository })
-    $wingetNames = @()
+    $winget = @()
     if (Get-Command -Name Get-WinGetPackage -ErrorAction SilentlyContinue) {
         # Skip apps winget already updates, so they aren't updated twice
-        $wingetNames = @(Get-WinGetPackage | Where-Object Source -eq 'winget' | ForEach-Object Name)
+        $winget = @(Get-WinGetPackage | Where-Object Source -eq 'winget')
     }
     $seen = @{}
     foreach ($program in Get-InstalledProgram) {
@@ -789,7 +790,9 @@ function Find-ReforgeApp {
         $owner = $Matches[1]
         $repo  = "$owner/$($Matches[2] -replace '\.git$', '')"
         if ($owner -in 'sponsors', 'orgs', 'apps', 'features', 'settings') { continue }
-        if ($tracked -contains $repo -or $wingetNames -contains $program.DisplayName -or $seen[$repo]) { continue }
+        if ($tracked -contains $repo -or $seen[$repo]) { continue }
+        # winget shortens names ("PowerShell 7-x64" is "PowerShell"), so match the start of the name and the version
+        if ($winget | Where-Object { $_.Name -and $program.DisplayName.StartsWith($_.Name, [StringComparison]::OrdinalIgnoreCase) -and $_.InstalledVersion -eq $program.DisplayVersion }) { continue }
         $seen[$repo] = $true
         [pscustomobject]@{
             PSTypeName = 'Reforge.Candidate'

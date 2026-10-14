@@ -81,12 +81,27 @@ Describe 'Finding installed GitHub apps' {
         }
 
         It 'leaves out apps that winget updates' {
-            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'PdfCraft'; Source = 'winget' } }
+            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'PdfCraft'; InstalledVersion = '2.0'; Source = 'winget' } }
             (Find-ReforgeApp -ConfigPath $config).Repository | Should -Not -Contain 'storytold/pdfcraft'
         }
 
+        It 'leaves out apps that winget knows by a shorter name' {
+            # Like PowerShell: "PowerShell 7-x64" in Installed apps, "PowerShell" in winget
+            Mock -ModuleName Reforge Get-InstalledProgram {
+                [pscustomobject]@{ DisplayName = 'PowerShell 7-x64'; DisplayVersion = '7.6.6.0'; URLInfoAbout = 'https://github.com/PowerShell/PowerShell' }
+            }
+            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'PowerShell'; InstalledVersion = '7.6.6.0'; Source = 'winget' } }
+            Find-ReforgeApp -ConfigPath $config | Should -BeNullOrEmpty
+        }
+
+        It 'keeps an app whose name only starts like a winget app''s, with another version' {
+            # winget's "Photo" isn't PhotoCraft
+            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'Photo'; InstalledVersion = '9.9'; Source = 'winget' } }
+            (Find-ReforgeApp -ConfigPath $config).Repository | Should -Contain 'storytold/photocraft'
+        }
+
         It 'keeps apps that winget only knows from another source' {
-            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'PdfCraft'; Source = 'msstore' } }
+            Mock -ModuleName Reforge Get-WinGetPackage { [pscustomobject]@{ Name = 'PdfCraft'; InstalledVersion = '2.0'; Source = 'msstore' } }
             (Find-ReforgeApp -ConfigPath $config).Repository | Should -Contain 'storytold/pdfcraft'
         }
 
