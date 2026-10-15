@@ -298,7 +298,7 @@ func TestAddByNameAsksAboutGitHubMatches(t *testing.T) {
 	if err != nil || repo != "ValveSoftware/dxvk" {
 		t.Fatalf("got %q, %v", repo, err)
 	}
-	if q := errOut.String(); !strings.Contains(q, "Is it doitsujin/dxvk? ★ 18285, latest v3.1.1: Vulkan-based D3D") {
+	if q := errOut.String(); !strings.Contains(q, "Is it doitsujin/dxvk? ★ 18285: Vulkan-based D3D") {
 		t.Errorf("questions: %q", q)
 	}
 
@@ -323,19 +323,38 @@ func TestChooseStopsAskingWhenInputEnds(t *testing.T) {
 	}
 }
 
-func TestAddByNameShowsGitHubErrors(t *testing.T) {
-	useFakes(t, nil)
+// lookUpWith runs the name lookup with GitHub returning these matches, the latest release (nil: none)
+// or an error, and someone answering with the given lines.
+func lookUpWith(t *testing.T, repos []github.Repo, release *github.Release, err error, answers string) (string, string, error) {
+	useFakes(t, release)
 	realEngine := newEngine
 	newEngine = func(c *cli) *core.Engine {
 		e := realEngine(c)
 		gh := e.GitHub.(*fakeReleases)
-		gh.repos = []github.Repo{{FullName: "doitsujin/dxvk", Stars: 18285}}
-		gh.err = errors.New("GitHub's limit of about 60 checks an hour was reached; set GITHUB_TOKEN to a GitHub token for more")
+		gh.repos, gh.err = repos, err
 		return e
 	}
-	code, _, errOut := reforge(t, configIn(t), "add", "dxvk")
-	if code != 1 || !strings.Contains(errOut, "set GITHUB_TOKEN") || strings.Contains(errOut, "no repository chosen") {
-		t.Errorf("%d %q", code, errOut)
+	var errOut bytes.Buffer
+	c := newCLI(strings.NewReader(answers), &bytes.Buffer{}, &errOut)
+	c.interactive = true
+	repo, lookErr := c.lookUp(configIn(t), "dxvk")
+	return repo, errOut.String(), lookErr
+}
+
+func TestAddByNameShowsGitHubErrors(t *testing.T) {
+	limit := errors.New("GitHub's limit of 60 checks an hour was reached; it resets in 9 minutes")
+	_, _, err := lookUpWith(t, []github.Repo{{FullName: "doitsujin/dxvk", Stars: 18285}}, nil, limit, "y\n")
+	if err != limit {
+		t.Errorf("want GitHub's error, not %v", err)
+	}
+}
+
+func TestAddByNameChecksOnlyTheChosenMatch(t *testing.T) {
+	// Picked, but it has no releases: says so, and asks about the next match
+	repos := []github.Repo{{FullName: "ValveSoftware/dxvk", Stars: 488}, {FullName: "doitsujin/dxvk", Stars: 18285}}
+	repo, errOut, err := lookUpWith(t, repos, nil, nil, "y\ny\n")
+	if repo != "" || err == nil || !strings.Contains(errOut, "ValveSoftware/dxvk has no releases") || !strings.Contains(errOut, "Is it doitsujin/dxvk?") {
+		t.Errorf("got %q, %v, %q", repo, err, errOut)
 	}
 }
 
