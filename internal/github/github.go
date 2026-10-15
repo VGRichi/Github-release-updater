@@ -8,19 +8,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Release is a GitHub release.
 type Release struct {
-	Tag    string  `json:"tag_name"`
-	Draft  bool    `json:"draft"`
-	Assets []Asset `json:"assets"`
+	Tag       string    `json:"tag_name"`
+	Draft     bool      `json:"draft"`
+	Published time.Time `json:"published_at"`
+	Assets    []Asset   `json:"assets"`
 }
 
 // Asset is a file attached to a release. Digest is GitHub's checksum, like "sha256:ab12...".
@@ -31,11 +35,13 @@ type Asset struct {
 	Size   int64  `json:"size"`
 }
 
-// Client talks to the GitHub API. Token is optional; without it GitHub allows about 60 requests an hour.
+// Client talks to the GitHub API. Token is optional; without it GitHub allows 60 requests an hour.
 type Client struct {
 	HTTP  *http.Client
 	API   string
 	Token string
+	Cache *Cache // optional: recent answers, reused instead of asking again
+	now   func() time.Time
 }
 
 // New returns a client for api.github.com.
@@ -53,8 +59,23 @@ func (e *StatusError) Error() string { return e.Message }
 
 // Latest returns the newest release: the latest stable one, or with prerelease (or when there's no
 // stable release) the newest one that isn't a draft. It returns nil when there are no releases.
+// With a Cache, a recent answer is reused instead of asking GitHub again.
 func (c *Client) Latest(repo string, prerelease bool) (*Release, error) {
-	if !prerelease {
+	if c.Cache != nil {
+		if r, ok := c.Cache.recent(repo, prerelease); ok {
+			return r, nil
+		}
+	}
+	r, err := c.latest(repo, prerelease)
+	if err == nil && c.Cache != nil {
+		c.Cache.put(repo, prerelease, r)
+	}
+	return r, err
+}
+
+func (c *Client) latest(repo string, prerelease bool) (*Release, error) {
+	// A repository known to have no stable release goes straight to the list, saving a request
+	if !prerelease && (c.Cache == nil || !c.Cache.noStable(repo)) {
 		var r Release
 		err := c.get("/repos/"+repo+"/releases/latest", &r)
 		var status *StatusError
@@ -62,6 +83,9 @@ func (c *Client) Latest(repo string, prerelease bool) (*Release, error) {
 			return &r, nil
 		} else if !errors.As(err, &status) || status.Status != http.StatusNotFound {
 			return nil, err
+		}
+		if c.Cache != nil {
+			c.Cache.putNoStable(repo)
 		}
 	}
 	var all []Release
@@ -95,11 +119,35 @@ func (c *Client) get(path string, v any) error {
 	case resp.StatusCode == http.StatusNotFound:
 		return &StatusError{resp.StatusCode, "repository not found on GitHub (or it's private)"}
 	case (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) && resp.Header.Get("X-RateLimit-Remaining") == "0":
-		return &StatusError{resp.StatusCode, "GitHub's limit of about 60 checks an hour was reached; set GITHUB_TOKEN to a GitHub token for more"}
+		return &StatusError{resp.StatusCode, c.limitMessage(resp.Header)}
 	case resp.StatusCode >= 300:
 		return &StatusError{resp.StatusCode, fmt.Sprintf("GitHub replied %s", resp.Status)}
 	}
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// limitMessage says GitHub's hourly limit was reached, when it resets, and how to get more.
+func (c *Client) limitMessage(h http.Header) string {
+	limit, when := h.Get("X-RateLimit-Limit"), "soon"
+	if limit == "" {
+		limit = "60"
+	}
+	if reset, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+		now := time.Now()
+		if c.now != nil {
+			now = c.now()
+		}
+		minutes := max(int(math.Ceil(time.Unix(reset, 0).Sub(now).Minutes())), 1)
+		when = fmt.Sprintf("in %d minute", minutes)
+		if minutes > 1 {
+			when += "s"
+		}
+	}
+	msg := fmt.Sprintf("GitHub's limit of %s checks an hour was reached; it resets %s", limit, when)
+	if c.Token == "" {
+		msg += ". For 5,000 an hour, sign in with the GitHub CLI (gh auth login) or set GITHUB_TOKEN to a GitHub token"
+	}
+	return msg
 }
 
 // Download saves the asset into dir and checks it against GitHub's checksum, deleting it if it doesn't

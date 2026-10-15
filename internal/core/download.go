@@ -2,9 +2,9 @@ package core
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/VGRichi/Reforge/internal/applist"
@@ -20,8 +20,8 @@ import (
 // moved to the backups, since you may have changed files in it.
 func (e *Engine) updateDownload(app *applist.App, release *github.Release, r *Result) error {
 	r.Installed = app.InstalledVersion
-	if info, err := os.Stat(app.Folder); err != nil || !info.IsDir() {
-		r.Status, r.Note = Skipped, "Folder not found: "+app.Folder
+	if !isDir(app.Folder) {
+		r.set(Skipped, "Folder not found: "+app.Folder)
 		return nil
 	}
 	if app.InstalledVersion == release.Tag || version.Same(app.InstalledVersion, release.Tag) {
@@ -30,81 +30,71 @@ func (e *Engine) updateDownload(app *applist.App, release *github.Release, r *Re
 	}
 	asset := pick.Archive(release.Assets, app.Pattern, e.Arch)
 	if asset == nil {
-		r.Status, r.Note = Skipped, "No zip/7z/tar.gz file in this release"
+		r.set(Skipped, "No zip/7z/tar.gz file in this release")
 		return nil
 	}
-	if asset.Digest != "" {
-		app.HadDigest = true
-	}
-	r.Status, r.Note = UpdateAvailable, verificationNote(app, asset)
-	if e.DryRun {
-		return nil
-	}
-	if !e.approve(app, asset) {
-		r.Status, r.Note = Skipped, "Unverified download declined"
+	if !e.offer(app, asset, r) || !e.approved(app, asset, r) {
 		return nil
 	}
 
-	work, err := os.MkdirTemp(e.WorkRoot, "reforge-")
+	file, cleanup, err := e.fetch(asset)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(work)
-	e.progress("Downloading %s (%s)", asset.Name, size(asset.Size))
-	file, err := e.GitHub.Download(*asset, work)
-	if err != nil {
-		return err
-	}
-
+	defer cleanup()
+	note := "Downloaded " + asset.Name
 	// Extract first, so a broken archive changes nothing in the folder
-	oldFolder := ExtractedFolder(app.Folder, app.Repository, app.InstalledVersion)
-	var newFolder string
-	if oldFolder != "" {
-		e.progress("Extracting %s", asset.Name)
-		extracted := filepath.Join(work, "extracted")
-		if err := archive.Extract(file, extracted); err != nil {
+	if old := ExtractedFolder(app.Folder, app.Repository, app.InstalledVersion); old != "" {
+		name, err := e.replaceExtracted(app, asset, file, old)
+		if err != nil {
 			return err
 		}
-		// An archive with one folder inside (dxvk-3.1.2/) keeps its name; otherwise it's named after the archive
-		src, name := extracted, archiveBase(asset.Name)
-		if entries, _ := os.ReadDir(extracted); len(entries) == 1 && entries[0].IsDir() {
-			src, name = filepath.Join(extracted, entries[0].Name()), entries[0].Name()
-		}
-		newFolder = filepath.Join(app.Folder, name)
-		if _, err := os.Stat(newFolder); err == nil && newFolder != oldFolder {
-			return fmt.Errorf("%s already exists; move it away and try again", newFolder)
-		}
-		// The old folder goes to the backups first, which also makes room if both have the same name
-		appBackups := filepath.Join(e.BackupRoot, safeName(app.Name))
-		backup := filepath.Join(appBackups, e.now().Format(archive.BackupFolderName), filepath.Base(oldFolder))
-		if err := os.MkdirAll(filepath.Dir(backup), 0o755); err != nil {
-			return err
-		}
-		if err := archive.Move(oldFolder, backup); err != nil {
-			return fmt.Errorf("couldn't move the old folder %s to the backups (is something using it?): %v", oldFolder, err)
-		}
-		if err := archive.Move(src, newFolder); err != nil {
-			archive.Move(backup, oldFolder) // put the old version back
-			return err
-		}
-		e.verbose("The old folder was moved to %s", backup)
-		archive.PruneBackups(appBackups, e.BackupsToKeep)
+		note += ", extracted to " + name
 	}
-
-	target := filepath.Join(app.Folder, asset.Name)
-	if err := archive.Move(file, target); err != nil {
+	if err := archive.Move(file, filepath.Join(app.Folder, asset.Name)); err != nil {
 		return err
 	}
 	app.InstalledVersion = release.Tag
-	r.Installed, r.Status = release.Tag, Updated
-	r.Note = "Downloaded " + asset.Name
-	if newFolder != "" {
-		r.Note += ", extracted to " + filepath.Base(newFolder)
-	}
+	r.Installed = release.Tag
 	if asset.Digest != "" {
-		r.Note += ". Checksum verified"
+		note += ". Checksum verified"
 	}
+	r.set(Updated, note)
 	return nil
+}
+
+// replaceExtracted extracts the new archive next to the old version's extracted folder, which moves to
+// the backups (put back if the new one can't be moved in). It returns the new folder's name.
+func (e *Engine) replaceExtracted(app *applist.App, asset *github.Asset, file, old string) (string, error) {
+	extracted, err := e.extract(asset, file)
+	if err != nil {
+		return "", err
+	}
+	// An archive with one folder inside (dxvk-3.1.2/) keeps its name; otherwise it's named after the archive
+	src, name := extracted, archiveBase(asset.Name)
+	if entries, _ := os.ReadDir(extracted); len(entries) == 1 && entries[0].IsDir() {
+		src, name = filepath.Join(extracted, entries[0].Name()), entries[0].Name()
+	}
+	newFolder := filepath.Join(app.Folder, name)
+	if newFolder != old && isDir(newFolder) {
+		return "", fmt.Errorf("%s already exists; move it away and try again", newFolder)
+	}
+	// The old folder goes to the backups first, which also makes room if both have the same name
+	backups, allBackups := e.backupFolder(app)
+	backup := filepath.Join(backups, filepath.Base(old))
+	if err := os.MkdirAll(backups, 0o755); err != nil {
+		return "", err
+	}
+	if err := archive.Move(old, backup); err != nil {
+		return "", fmt.Errorf("couldn't move the old folder %s to the backups (is something using it?): %v", old, err)
+	}
+	if err := archive.Move(src, newFolder); err != nil {
+		archive.Move(backup, old)
+		return "", err
+	}
+	e.verbose("The old folder was moved to %s", backup)
+	archive.PruneBackups(allBackups, e.BackupsToKeep)
+	return name, nil
 }
 
 // ExtractedFolder finds the folder in dir that an archive of this version was extracted into: its
@@ -130,24 +120,41 @@ func DetectVersion(dir, repo string) string {
 			continue
 		}
 		if v := version.Parse(e.Name()); v != nil && (best == nil || version.Compare(v, best) > 0) {
-			best, found = v, versionText(e.Name())
+			best, found = v, version.Text(e.Name())
 		}
 	}
 	return found
 }
 
-// namedLike reports whether a file or folder name contains the repository's name, ignoring case and
-// punctuation ("Optiscaler_0.9.4" for optiscaler/OptiScaler).
-func namedLike(name, repo string) bool {
-	clean := func(s string) string { return strings.ToLower(notAlphanumeric.ReplaceAllString(s, "")) }
-	leaf := clean(repoLeaf(repo))
-	return leaf != "" && strings.Contains(clean(name), leaf)
+// FindDownloaded looks through the folders, two levels deep, for a repository's archives or extracted
+// folders, and returns the folder with the newest version, and that version. It returns "" with none.
+func FindDownloaded(folders []string, repo string) (folder, ver string) {
+	var best version.Version
+	eachFolder(folders, func(dir string) {
+		if found := DetectVersion(dir, repo); found != "" {
+			if v := version.Parse(found); best == nil || version.Compare(v, best) > 0 {
+				best, folder, ver = v, dir, found
+			}
+		}
+	})
+	return folder, ver
 }
 
-var versionNumber = regexp.MustCompile(`\d+(?:\.\d+){0,3}`)
-
-// versionText is the version number in a name, as written ("3.1.1" in dxvk-3.1.1).
-func versionText(name string) string { return versionNumber.FindString(name) }
+// eachFolder calls visit for each folder and its subfolders two levels deep, like Downloads\Mods\Game.
+func eachFolder(roots []string, visit func(dir string)) {
+	for _, root := range roots {
+		filepath.WalkDir(root, func(dir string, d fs.DirEntry, err error) error {
+			if err != nil || !d.IsDir() {
+				return nil
+			}
+			if rel, _ := filepath.Rel(root, dir); rel != "." && strings.Count(rel, string(filepath.Separator)) >= 2 {
+				return filepath.SkipDir
+			}
+			visit(dir)
+			return nil
+		})
+	}
+}
 
 // archiveBase is an archive's name without its extension: tool-1.2 for tool-1.2.tar.gz.
 func archiveBase(name string) string {

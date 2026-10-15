@@ -12,10 +12,13 @@ type Version []int
 
 var number = regexp.MustCompile(`\d+(?:\.\d+){0,3}`)
 
+// Text is the first version number in text, as written: "3.1.1" in "dxvk-3.1.1", or "".
+func Text(text string) string { return number.FindString(text) }
+
 // Parse takes the first version number in text: "v1.2.3" is 1.2.3 and "release-2024.10" is 2024.10.
 // Anything after the numbers is ignored, so "1.2.0-beta3" is 1.2.0. It returns nil without a number.
 func Parse(text string) Version {
-	m := number.FindString(text)
+	m := Text(text)
 	if m == "" {
 		return nil
 	}

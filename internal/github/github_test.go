@@ -3,12 +3,14 @@ package github
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeGitHub answers API paths from a map; anything else is a 404.
@@ -151,5 +153,121 @@ func TestParseRepo(t *testing.T) {
 		if _, ok := ParseRepo(in); ok {
 			t.Errorf("ParseRepo(%q) should fail", in)
 		}
+	}
+}
+
+// releasesServer answers the API for o/r with one release (or only a prerelease), counting requests.
+type releasesServer struct {
+	published  time.Time
+	onlyBeta   bool
+	requests   int
+	stableHits int
+}
+
+func (s *releasesServer) start(t *testing.T) *Client {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.requests++
+		release := fmt.Sprintf(`{"tag_name":"v1.0.0","prerelease":%v,"published_at":%q}`, s.onlyBeta, s.published.Format(time.RFC3339))
+		switch r.URL.RequestURI() {
+		case "/repos/o/r/releases/latest":
+			s.stableHits++
+			if s.onlyBeta {
+				http.NotFound(w, r)
+				return
+			}
+			w.Write([]byte(release))
+		case "/repos/o/r/releases?per_page=10":
+			w.Write([]byte("[" + release + "]"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return &Client{HTTP: srv.Client(), API: srv.URL}
+}
+
+// withClock gives a cache a clock the test moves.
+func withClock(c *Cache, now *time.Time) *Cache {
+	c.now = func() time.Time { return *now }
+	return c
+}
+
+func TestCacheReusesRecentChecks(t *testing.T) {
+	now := time.Now()
+	s := &releasesServer{published: now.Add(-48 * time.Hour)}
+	c := s.start(t)
+	path := filepath.Join(t.TempDir(), "cache.json")
+	for range 3 { // later runs read the cache file again
+		c.Cache = withClock(OpenCache(path), &now)
+		if r, err := c.Latest("o/r", false); err != nil || r.Tag != "v1.0.0" {
+			t.Fatalf("got %+v, %v", r, err)
+		}
+	}
+	if s.requests != 1 {
+		t.Errorf("%d requests; checks within the hour should reuse the first", s.requests)
+	}
+	now = now.Add(61 * time.Minute) // an hour later, GitHub is asked again
+	c.Latest("o/r", false)
+	if s.requests != 2 {
+		t.Errorf("%d requests after an hour", s.requests)
+	}
+}
+
+func TestCacheReusesANewReleaseOnlyBriefly(t *testing.T) {
+	// Published just now: its files may still be uploading, so the answer is reused for minutes, not an hour
+	now := time.Now()
+	s := &releasesServer{published: now}
+	c := s.start(t)
+	c.Cache = withClock(OpenCache(filepath.Join(t.TempDir(), "cache.json")), &now)
+	c.Latest("o/r", false)
+	now = now.Add(2 * time.Minute)
+	c.Latest("o/r", false)
+	now = now.Add(5 * time.Minute)
+	c.Latest("o/r", false)
+	if s.requests != 2 {
+		t.Errorf("%d requests", s.requests)
+	}
+}
+
+func TestCacheRemembersThereIsNoStableRelease(t *testing.T) {
+	now := time.Now()
+	s := &releasesServer{published: now.Add(-48 * time.Hour), onlyBeta: true}
+	c := s.start(t)
+	c.Cache = withClock(OpenCache(filepath.Join(t.TempDir(), "cache.json")), &now)
+	c.Latest("o/r", false) // asks for the stable release, gets none, then the list: 2 requests
+	now = now.Add(2 * time.Hour)
+	if r, err := c.Latest("o/r", false); err != nil || r.Tag != "v1.0.0" {
+		t.Fatalf("got %+v, %v", r, err)
+	}
+	if s.requests != 3 || s.stableHits != 1 {
+		t.Errorf("%d requests, %d for the stable release; the second check should skip it", s.requests, s.stableHits)
+	}
+}
+
+func TestBrokenCacheIsIgnored(t *testing.T) {
+	s := &releasesServer{published: time.Now().Add(-48 * time.Hour)}
+	c := s.start(t)
+	path := filepath.Join(t.TempDir(), "cache.json")
+	os.WriteFile(path, []byte("{ not json"), 0o644)
+	c.Cache = OpenCache(path)
+	if r, err := c.Latest("o/r", false); err != nil || r.Tag != "v1.0.0" {
+		t.Fatalf("got %+v, %v", r, err)
+	}
+}
+
+func TestLimitMessage(t *testing.T) {
+	now := time.Unix(1_000_000, 0)
+	h := http.Header{}
+	h.Set("X-RateLimit-Limit", "60")
+	h.Set("X-RateLimit-Reset", "1000700") // 11 minutes 40 seconds from now
+	c := &Client{now: func() time.Time { return now }}
+	if got := c.limitMessage(h); got != "GitHub's limit of 60 checks an hour was reached; it resets in 12 minutes. For 5,000 an hour, sign in with the GitHub CLI (gh auth login) or set GITHUB_TOKEN to a GitHub token" {
+		t.Errorf("without a token: %q", got)
+	}
+	c.Token = "x"
+	h.Set("X-RateLimit-Limit", "5000")
+	h.Set("X-RateLimit-Reset", "1000030")
+	if got := c.limitMessage(h); got != "GitHub's limit of 5000 checks an hour was reached; it resets in 1 minute" {
+		t.Errorf("with a token: %q", got)
 	}
 }

@@ -144,8 +144,8 @@ func TestPrepareWorksOutHowToTrackAnApp(t *testing.T) {
 	}{
 		{"installed, with an installer", []string{"Tool-x64.msi", "Tool-win64.zip"}, "Tool 1.0", applist.App{Name: "Tool"}, ""},
 		{"a release of archives", []string{"tool-1.1.zip"}, "", applist.App{Name: "tool", Type: "download", Folder: downloads}, ""},
-		{"an installer that isn't installed, with a portable zip", []string{"Tool-x64.msi", "Tool-win64.zip"}, "", applist.App{Name: "tool", Type: "download", Folder: downloads}, ""},
-		{"only an installer, not installed", []string{"Tool-x64-setup.exe"}, "", applist.App{}, "reforge install o/tool"},
+		{"an installer that isn't installed, with a portable zip", []string{"Tool-x64.msi", "Tool-win64.zip"}, "", applist.App{}, "tool isn't installed"},
+		{"only an installer, not installed", []string{"Tool-x64-setup.exe"}, "", applist.App{}, "tool isn't installed"},
 		{"nothing usable", []string{"tool.dmg"}, "", applist.App{}, "no Windows installer"},
 	}
 	for _, tt := range tests {
