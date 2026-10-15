@@ -111,7 +111,7 @@ func TestAddListRemove(t *testing.T) {
 		t.Fatalf("stored: %+v %+v", apps[0], dxvk)
 	}
 
-	_, out, _ := reforge(t, config, "list", "DXVK*", "--offline")
+	_, out, _ := reforge(t, config, "list", "DXVK*")
 	if !strings.Contains(out, "DXVK (Game)") || strings.Contains(out, "PhotoCraft") || !strings.Contains(out, game) {
 		t.Errorf("list: %q", out)
 	}
@@ -159,7 +159,7 @@ func TestAddFindsADownloadedToolInDownloads(t *testing.T) {
 	if !apps[0].IsDownload() || apps[0].Folder != mods || apps[0].InstalledVersion != "3.1.1" || apps[0].Name != "dxvk" {
 		t.Fatalf("stored: %+v", apps[0])
 	}
-	if _, out, _ := reforge(t, config, "list", "--offline"); !strings.Contains(out, "3.1.1") || !strings.Contains(out, mods) {
+	if _, out, _ := reforge(t, config, "list"); !strings.Contains(out, "3.1.1") || !strings.Contains(out, mods) {
 		t.Errorf("list: %q", out)
 	}
 

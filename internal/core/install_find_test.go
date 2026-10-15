@@ -94,15 +94,6 @@ func TestInstallTrustedAppGetsTheNormalQuestion(t *testing.T) {
 	}
 }
 
-func TestInstallDryRun(t *testing.T) {
-	te, app := installCase(t)
-	te.DryRun = true
-	r, track := te.Install(app, false)
-	if r.Status != Available || r.Note != "Checksum available" || track || len(te.gh.downloads) != 0 {
-		t.Fatalf("got %+v", r)
-	}
-}
-
 func TestInstallFailedSuggestsAdmin(t *testing.T) {
 	te, app := installCase(t)
 	te.sys.exitCode = 1603

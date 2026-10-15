@@ -3,15 +3,19 @@ package core
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/VGRichi/Reforge/internal/applist"
 	"github.com/VGRichi/Reforge/internal/pick"
 	"github.com/VGRichi/Reforge/internal/system"
-	"github.com/VGRichi/Reforge/internal/version"
 )
+
+// NotInstalledError is Prepare's answer for an app whose release has an installer but that isn't
+// installed: it can be installed first (Engine.Install).
+type NotInstalledError struct{ Name string }
+
+func (e *NotInstalledError) Error() string { return e.Name + " isn't installed" }
 
 // Prepare works out how a new app is kept up to date, from what's installed and what its latest
 // release has:
@@ -32,31 +36,31 @@ func (e *Engine) Prepare(app *applist.App, folders []string) error {
 	}
 	name := app.Name
 	if name == "" {
-		name = repoLeaf(app.Repository)
+		name = path.Base(app.Repository)
 	}
-	installer := pick.Installer(release.Assets, app.Pattern, true, e.Arch)
-	if installer != nil {
+	if pick.Installer(release.Assets, app.Pattern, true, e.Arch) != nil {
 		programs, err := e.installedPrograms()
 		if err != nil {
 			return err
 		}
-		if p := installedFrom(programs, app.Name, app.Repository); p != nil {
-			if app.Name == "" {
-				app.Name = BaseName(p.Name)
-			}
-			return nil
+		p := installedFrom(programs, app.Name, app.Repository)
+		if p == nil {
+			return &NotInstalledError{name}
 		}
-		return &NotInstalledError{name}
-	}
-	if pick.Archive(release.Assets, app.Pattern, e.Arch) != nil {
-		app.Type, app.Name = "download", name
-		app.Folder, app.InstalledVersion = FindDownloaded(folders, app.Repository)
-		if app.Folder == "" && len(folders) > 0 {
-			app.Folder = folders[0]
+		if app.Name == "" {
+			app.Name = BaseName(p.Name)
 		}
 		return nil
 	}
-	return errors.New("its latest release has no Windows installer and no .zip, .7z or .tar.gz file")
+	if pick.Archive(release.Assets, app.Pattern, e.Arch) == nil {
+		return errors.New("its latest release has no Windows installer and no .zip, .7z or .tar.gz file")
+	}
+	app.Type, app.Name = "download", name
+	app.Folder, app.InstalledVersion = FindDownloaded(folders, app.Repository)
+	if app.Folder == "" && len(folders) > 0 {
+		app.Folder = folders[0]
+	}
+	return nil
 }
 
 // installedFrom finds the installed app a repository makes. A name you gave matches loosely, like it
@@ -67,55 +71,16 @@ func installedFrom(programs []system.Program, givenName, repo string) *system.Pr
 	if givenName != "" {
 		return FindProgram(programs, givenName)
 	}
-	clean := func(s string) string { return strings.ToLower(notAlphanumeric.ReplaceAllString(s, "")) }
-	leaf := clean(repoLeaf(repo))
-	link := "github.com/" + strings.ToLower(repo)
 	for i := range programs {
-		for _, l := range programs[i].Links {
-			if l = strings.ToLower(strings.TrimSuffix(l, ".git")); strings.HasSuffix(strings.TrimRight(l, "/"), link) || strings.Contains(l, link+"/") {
-				return &programs[i]
-			}
+		if strings.EqualFold(repoFromLinks(programs[i].Links), repo) {
+			return &programs[i]
 		}
 	}
+	leaf := simple(path.Base(repo))
 	for i := range programs {
-		fields := strings.Fields(programs[i].Name)
-		if len(fields) == 0 {
-			continue
-		}
-		if word := clean(fields[0]); word == leaf || (len(word) >= 4 && strings.HasPrefix(leaf, word)) {
+		if word := firstWord(programs[i].Name); word == leaf || (len(word) >= 4 && strings.HasPrefix(leaf, word)) {
 			return &programs[i]
 		}
 	}
 	return nil
 }
-
-// FindDownloaded looks through the folders, two levels deep, for a repository's archives or extracted
-// folders (Optiscaler_0.9.4.7z, dxvk-3.1.1), and returns the folder with the newest version, and that
-// version. It returns "" when there are none.
-func FindDownloaded(folders []string, repo string) (folder, ver string) {
-	var best version.Version
-	for _, root := range folders {
-		filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || !d.IsDir() {
-				return nil
-			}
-			rel, _ := filepath.Rel(root, path)
-			if rel != "." && strings.Count(rel, string(filepath.Separator)) >= 2 {
-				return filepath.SkipDir
-			}
-			if found := DetectVersion(path, repo); found != "" {
-				if v := version.Parse(found); best == nil || version.Compare(v, best) > 0 {
-					best, folder, ver = v, path, found
-				}
-			}
-			return nil
-		})
-	}
-	return folder, ver
-}
-
-// NotInstalledError is Prepare's answer for an app whose release has an installer but that isn't
-// installed: it can be installed first (Engine.Install).
-type NotInstalledError struct{ Name string }
-
-func (e *NotInstalledError) Error() string { return e.Name + " isn't installed" }

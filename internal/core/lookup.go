@@ -1,8 +1,8 @@
 package core
 
 import (
+	"path"
 	"sort"
-	"strings"
 
 	"github.com/VGRichi/Reforge/internal/github"
 )
@@ -15,29 +15,16 @@ func (e *Engine) LocalRepo(name string, folders []string) (string, error) {
 		return "", err
 	}
 	if p := FindProgram(programs, name); p != nil {
-		if m := repoLink.FindStringSubmatch(strings.Join(p.Links, " ")); m != nil && !notOwners[strings.ToLower(m[1])] {
-			return m[1] + "/" + strings.TrimSuffix(m[2], ".git"), nil
+		if repo := repoFromLinks(p.Links); repo != "" {
+			return repo, nil
 		}
 	}
 	for _, d := range e.downloads(folders) {
-		if sameName(name, repoLeaf(d.repo)) {
+		if sameName(name, path.Base(d.repo)) {
 			return d.repo, nil
 		}
 	}
 	return "", nil
-}
-
-// sameName reports whether a typed name and a repository's name are the same, ignoring case and
-// punctuation, with + spelled out ("optiscaler" and "OptiScaler", "notepad++" and "notepad-plus-plus").
-func sameName(name, leaf string) bool {
-	clean := func(s string) string { return strings.ToLower(notAlphanumeric.ReplaceAllString(s, "")) }
-	return clean(name) != "" && clean(searchWords(name)) == clean(leaf)
-}
-
-// searchWords is a name as words GitHub's search understands: it ignores symbols, so "notepad++" would
-// find nothing, while "notepad plus plus" finds notepad-plus-plus.
-func searchWords(name string) string {
-	return strings.Join(strings.Fields(notAlphanumeric.ReplaceAllString(strings.ReplaceAll(name, "+", " plus "), " ")), " ")
 }
 
 // SearchRepos searches GitHub for repositories with the name, most likely first: exactly that name
@@ -51,7 +38,7 @@ func (e *Engine) SearchRepos(name string) ([]github.Repo, error) {
 		switch {
 		case r.Archived:
 			return 2
-		case sameName(name, repoLeaf(r.FullName)):
+		case sameName(name, path.Base(r.FullName)):
 			return 0
 		}
 		return 1
