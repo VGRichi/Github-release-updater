@@ -18,6 +18,7 @@ type cli struct {
 	interactive bool // someone can answer questions
 	configPath  string
 	verbose     bool
+	refresh     bool // ask GitHub again rather than reuse recent answers
 	failed      bool // a command finished, but something in it failed (exit code 1)
 }
 

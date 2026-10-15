@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -22,22 +23,41 @@ var downloadsFolder = system.DownloadsFolder
 
 // newEngine connects the engine to the real GitHub and OS; tests replace it.
 var newEngine = func(c *cli) *core.Engine {
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		token = os.Getenv("GH_TOKEN")
-	}
 	return &core.Engine{
-		GitHub: github.New(token), System: system.New(), Ask: c, Arch: pick.Arch(runtime.GOARCH),
+		GitHub: github.New(githubToken()), System: system.New(), Ask: c, Arch: pick.Arch(runtime.GOARCH),
 		WorkRoot: os.TempDir(), BackupsToKeep: 3,
 		Progress: c.progress, Verbose: c.detail, Warn: c.warn,
 	}
 }
 
-// engine returns an engine whose backups go next to the list file.
+// engine returns an engine whose backups and cache of recent GitHub answers go next to the list file.
 func (c *cli) engine(listPath string) *core.Engine {
 	e := newEngine(c)
-	e.BackupRoot = filepath.Join(filepath.Dir(listPath), "backups")
+	dir := filepath.Dir(listPath)
+	e.BackupRoot = filepath.Join(dir, "backups")
+	if gh, ok := e.GitHub.(*github.Client); ok {
+		gh.Cache = github.OpenCache(filepath.Join(dir, "cache.json"))
+		if c.refresh {
+			gh.Cache.MaxAge = 0
+		}
+	}
 	return e
+}
+
+// githubToken is the token to use with GitHub's API: GITHUB_TOKEN or GH_TOKEN, or else the GitHub CLI's
+// sign-in (gh auth token) if it's installed. With one, GitHub allows 5,000 requests an hour instead of 60.
+func githubToken() string {
+	for _, name := range []string{"GITHUB_TOKEN", "GH_TOKEN"} {
+		if token := os.Getenv(name); token != "" {
+			return token
+		}
+	}
+	if gh, err := exec.LookPath("gh"); err == nil {
+		if out, err := exec.Command(gh, "auth", "token").Output(); err == nil {
+			return strings.TrimSpace(string(out))
+		}
+	}
+	return ""
 }
 
 func (c *cli) load() ([]*applist.App, string, error) {
@@ -296,6 +316,7 @@ func runList(c *cli, args []string) error {
 	fs := c.flags("list")
 	offline := fs.Bool("offline", false, "only list, without checking GitHub for updates")
 	asJSON := fs.Bool("json", false, "print the list as JSON")
+	fs.BoolVar(&c.refresh, "refresh", false, "ask GitHub again, instead of reusing checks from the last hour")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -361,6 +382,7 @@ func statusText(le listEntry) string {
 func runUpdate(c *cli, args []string) error {
 	fs := c.flags("update")
 	asJSON := fs.Bool("json", false, "print the results as JSON")
+	fs.BoolVar(&c.refresh, "refresh", false, "ask GitHub again, instead of reusing checks from the last hour")
 	fs.BoolVar(&c.verbose, "verbose", false, "show more detail")
 	names, err := parse(fs, args)
 	if err != nil {

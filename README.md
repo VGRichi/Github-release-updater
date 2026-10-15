@@ -83,7 +83,7 @@ reforge update                        # install the updates
 reforge remove dxvk                   # stop tracking (doesn't uninstall)
 ```
 
-Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. For more than GitHub's 60 checks an hour, set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens).
+Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. GitHub allows 60 checks an hour without signing in; Reforge reuses checks from the last hour (`--refresh` to check again). For 5,000 an hour, sign in with the [GitHub CLI](https://cli.github.com) (`gh auth login`), which Reforge uses automatically, or set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens).
 
 ## Security
 

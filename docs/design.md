@@ -22,7 +22,8 @@ reforge remove <name...>       stop tracking
 Flags mirror the module's parameters (`--name`, `--dest`, `--subfolder`, `--include`, `--keep`,
 `--rename from=to`, `--pattern`, `--silent-args`, `--prerelease`, `--allow-unverified`, `--force`,
 `--yes`). `--json` gives machine-readable output, `--config` another list file. The GitHub token comes
-from `GITHUB_TOKEN` or `GH_TOKEN` only, never a flag, so it doesn't end up in shell history.
+from `GITHUB_TOKEN` or `GH_TOKEN`, or else the GitHub CLI's sign-in (`gh auth token`), never a flag, so
+it doesn't end up in shell history.
 
 ## Kept from the module
 
@@ -51,6 +52,12 @@ from `GITHUB_TOKEN` or `GH_TOKEN` only, never a flag, so it doesn't end up in sh
 - **`reforge add <name>`**: the repository comes from this PC (an installed app linking to GitHub, a
   download's note), else from GitHub's search, ranked exact name first, then stars, archived last;
   each match with releases is asked about (Yes/No, up to 5; nobody to ask = No).
+- **Fewer API requests** (60 an hour without a token, per internet connection): answers about latest
+  releases are reused for an hour (`cache.json` next to the list; `--refresh` asks again), a release
+  published less than an hour before it was checked only for 5 minutes (its files may still be
+  uploading), and "no stable release" is remembered for a day, saving a request per check. Rate-limit
+  errors say when the limit resets and how to sign in. Only the official API is used: ETag requests
+  still counted without a token (tested), and the web's /releases/latest redirect isn't an API.
 - **Double-click** (Windows): shows the help and turns the window into a PowerShell prompt, instead of
   a window that closes at once.
 
