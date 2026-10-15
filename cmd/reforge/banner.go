@@ -85,7 +85,7 @@ const doubleClickHelp = `
 Reforge is a command-line tool, so it runs in a terminal rather than in a window.
 Open PowerShell, Command Prompt or Windows Terminal and type, for example:
 
-  reforge find --add          track apps you already have
+  reforge add                 find apps you already have, and pick what to track
   reforge list                what you track, and which have updates
   reforge --help              all commands
 

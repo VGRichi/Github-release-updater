@@ -23,37 +23,35 @@ var version = "dev"
 const usage = `Usage: reforge <command> [arguments] [options]
 
 Commands:
-  add <name>             track an app, mod or tool you already have (a name or owner/repo)
-  install <owner/repo>   download and install an app, and track it
-  list [name...]         list what you track, and which have updates
-  update [name...]       install the updates
-  find [folder...]       find installed apps and downloaded tools that come from GitHub
-  remove <name...>       stop tracking (doesn't uninstall)
-  version                show Reforge's version
+  add [name]         track an app, mod or tool, installing it if it isn't installed yet;
+                     with no name, find what's on this PC and pick what to track
+  list [name...]     what you track, and which have updates
+  update [name...]   install the updates
+  remove <name...>   stop tracking (doesn't uninstall)
+  version            show Reforge's version
 
 Run 'reforge <command> --help' for its options. Names can use wildcards like 'DXVK*'.
-Set GITHUB_TOKEN to a GitHub token for more than 60 checks an hour.
+For more than GitHub's 60 checks an hour, sign in with the GitHub CLI (gh auth login) or set GITHUB_TOKEN.
 `
 
 var commands = map[string]func(*cli, []string) error{
-	"add": runAdd, "install": runInstall, "list": runList, "update": runUpdate, "find": runFind, "remove": runRemove,
+	"add": runAdd, "list": runList, "update": runUpdate, "remove": runRemove,
 }
 
 // help is each command's arguments and description, for 'reforge <command> --help'.
 var help = map[string][2]string{
-	"add": {"<name or owner/repo> [folder]", "Starts tracking an app, mod or tool you already have. With just a name, Reforge looks on your\n" +
-		"PC (installed apps, downloads from GitHub), then searches GitHub and asks about each match.\n" +
-		"It works out which kind it is:\n" +
+	"add": {"[name or owner/repo] [folder]", "Starts tracking an app, mod or tool. With just a name, Reforge looks on your PC (installed\n" +
+		"apps, downloads from GitHub), then searches GitHub and asks about each match. Then:\n" +
 		"  - an installed app is updated with its installer;\n" +
+		"  - an app that isn't installed yet is installed first (it asks, unless --yes);\n" +
 		"  - a downloaded mod or tool (a .zip, .7z or .tar.gz) is kept up to date where you keep it. It's\n" +
 		"    looked for in your Downloads folder, or give the folder. New versions are downloaded there,\n" +
 		"    and extracted too if you extracted the old one.\n" +
-		"With --dest, its files are copied into that folder (like a game's) on every update instead."},
-	"install": {"<owner/repo>...", "Installs an app from its latest GitHub release (asking first) and starts tracking it."},
-	"list":    {"[name...]", "Lists the apps and tools you track, with their installed and latest versions\nand folders. It checks GitHub for updates, but installs nothing."},
-	"update":  {"[name...]", "Installs the updates: your apps and tools go to their latest GitHub release.\nSee what has updates first with 'reforge list'."},
-	"find":    {"[folder...]", "Finds installed apps that link to GitHub, and apps and tools downloaded from GitHub\nreleases into your Downloads folder (or the folders given, two levels deep)."},
-	"remove":  {"<name...>", "Stops tracking apps. They stay installed."},
+		"With --dest, its files are copied into that folder (like a game's) on every update instead.\n" +
+		"With no name, it finds the apps and downloads from GitHub on this PC and asks which to track."},
+	"list":   {"[name...]", "Lists the apps and tools you track, with their installed and latest versions\nand folders. It checks GitHub for updates, but installs nothing."},
+	"update": {"[name...]", "Installs the updates: your apps and tools go to their latest GitHub release.\nSee what has updates first with 'reforge list'."},
+	"remove": {"<name...>", "Stops tracking apps. They stay installed."},
 }
 
 // color is whether the help screen's banner is in colour.

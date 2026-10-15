@@ -213,18 +213,6 @@ func TestCacheReusesRecentChecks(t *testing.T) {
 	}
 }
 
-func TestCacheRefresh(t *testing.T) {
-	s := &releasesServer{published: time.Now().Add(-48 * time.Hour)}
-	c := s.start(t)
-	c.Cache = OpenCache(filepath.Join(t.TempDir(), "cache.json"))
-	c.Cache.MaxAge = 0 // reforge list --refresh
-	c.Latest("o/r", false)
-	c.Latest("o/r", false)
-	if s.requests != 2 {
-		t.Errorf("%d requests; --refresh should always ask", s.requests)
-	}
-}
-
 func TestCacheReusesANewReleaseOnlyBriefly(t *testing.T) {
 	// Published just now: its files may still be uploading, so the answer is reused for minutes, not an hour
 	now := time.Now()

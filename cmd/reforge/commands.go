@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -37,9 +38,6 @@ func (c *cli) engine(listPath string) *core.Engine {
 	e.BackupRoot = filepath.Join(dir, "backups")
 	if gh, ok := e.GitHub.(*github.Client); ok {
 		gh.Cache = github.OpenCache(filepath.Join(dir, "cache.json"))
-		if c.refresh {
-			gh.Cache.MaxAge = 0
-		}
 	}
 	return e
 }
@@ -87,17 +85,22 @@ func runAdd(c *cli, args []string) error {
 	prerelease := fs.Bool("prerelease", false, "follow beta releases")
 	trusted := fs.Bool("allow-unverified", false, "trust this app: install releases without a checksum without asking")
 	force := fs.Bool("force", false, "replace an app already in the list")
+	yes := fs.Bool("yes", false, "install an app that isn't installed yet without asking (a download without a checksum is still asked about)")
+	fs.BoolVar(&c.verbose, "verbose", false, "show more detail")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	if len(pos) == 0 || len(pos) > 2 || (len(pos) == 2 && len(dest) > 0) {
+	if len(pos) > 2 || (len(pos) == 2 && len(dest) > 0) || (len(pos) == 0 && (len(dest) > 0 || *name != "")) {
 		fs.Usage()
 		return errUsage
 	}
 	apps, path, err := c.load()
 	if err != nil {
 		return err
+	}
+	if len(pos) == 0 { // no name: find what's on this PC and ask about each
+		return c.addFound(path, apps)
 	}
 	repo, ok := github.ParseRepo(pos[0])
 	if !ok && strings.Contains(pos[0], "/") {
@@ -133,7 +136,12 @@ func runAdd(c *cli, args []string) error {
 		}
 		app.Type, app.Folder, app.InstalledVersion = "download", abs, core.DetectVersion(abs, repo)
 	default: // worked out from what's installed and what the release has
-		if err := c.engine(path).Prepare(app, []string{downloadsFolder()}); err != nil {
+		err := c.engine(path).Prepare(app, []string{downloadsFolder()})
+		var notInstalled *core.NotInstalledError
+		if errors.As(err, &notInstalled) { // not installed yet: install it (asking first), then track it
+			return c.install(path, apps, app, *yes)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -228,63 +236,79 @@ func absFolder(dir string) (string, error) {
 	return abs, nil
 }
 
-func runInstall(c *cli, args []string) error {
-	fs := c.flags("install")
-	name := fs.String("name", "", "track it by this name (as shown in Installed apps) instead of the one it gets")
-	pattern := fs.String("pattern", "", "pick the release file yourself, like '*setup.exe' (default: the .msi when there is one)")
-	silentArgs := fs.String("silent-args", "", "silent-install arguments for an installer that isn't recognised")
-	prerelease := fs.Bool("prerelease", false, "install and follow beta releases")
-	trusted := fs.Bool("allow-unverified", false, "trust this app: install releases without a checksum without asking")
-	yes := fs.Bool("yes", false, "don't ask before installing (downloads without a checksum are still asked about)")
-	dryRun := fs.Bool("dry-run", false, "only show what would be installed")
-	asJSON := fs.Bool("json", false, "print the results as JSON")
-	fs.BoolVar(&c.verbose, "verbose", false, "show more detail")
-	pos, err := parse(fs, args)
-	if err != nil {
-		return err
+// install installs an app that isn't installed yet from its latest release (asking first unless yes)
+// and tracks it, by the name it gets in Installed apps.
+func (c *cli) install(listPath string, apps []*applist.App, app *applist.App, yes bool) error {
+	if tracked := trackedAs(apps, app.Repository, app.Name); tracked != "" {
+		return fmt.Errorf("'%s' is already in the list. Update it with: reforge update \"%s\"", tracked, tracked)
 	}
-	if len(pos) == 0 || (*name != "" && len(pos) > 1) {
-		fs.Usage()
-		return errUsage
-	}
-	apps, path, err := c.load()
-	if err != nil {
-		return err
-	}
-	e := c.engine(path)
-	e.DryRun = *dryRun
-	if !*dryRun {
-		e.CleanWorkRoot()
-	}
-	var results []core.Result
-	for _, arg := range pos {
-		repo, ok := github.ParseRepo(arg)
-		if !ok {
-			c.warn(fmt.Sprintf("'%s' isn't a GitHub repository. Use owner/repo, for example storytold/photocraft.", arg))
-			c.failed = true
-			continue
+	e := c.engine(listPath)
+	e.CleanWorkRoot()
+	r, track := e.Install(app, yes)
+	if track {
+		if applist.Find(apps, app.Name) != nil {
+			c.warn(fmt.Sprintf("'%s' is already in the list, so this app isn't tracked. Track it with: reforge add %s --name \"<another name>\"", app.Name, app.Repository))
+		} else if err := applist.Save(listPath, append(apps, app)); err != nil {
+			return err
 		}
-		if tracked := trackedAs(apps, repo, *name); tracked != "" {
-			c.warn(fmt.Sprintf("'%s' is already in the list. Update it with: reforge update \"%s\"", tracked, tracked))
-			c.failed = true
-			continue
-		}
-		app := &applist.App{Name: *name, Repository: repo, Pattern: *pattern, SilentArgs: *silentArgs, Prerelease: *prerelease, AllowUnverified: *trusted}
-		r, track := e.Install(app, *yes)
-		if track {
-			if applist.Find(apps, app.Name) != nil {
-				c.warn(fmt.Sprintf("'%s' is already in the list, so this app isn't tracked. Track it with: reforge add %s --name \"<another name>\"", app.Name, repo))
-			} else {
-				apps = append(apps, app)
-				if err := applist.Save(path, apps); err != nil {
-					return err
-				}
+	}
+	c.failed = r.Status == core.Failed
+	return c.printResults([]core.Result{r}, false)
+}
+
+// addFound finds apps and tools from GitHub on this PC that aren't tracked yet (installed apps that link
+// to GitHub, and downloads from GitHub releases in the Downloads folder), and asks about each one.
+func (c *cli) addFound(listPath string, apps []*applist.App) error {
+	tracked := func(repo string) bool {
+		for _, a := range apps {
+			if strings.EqualFold(a.Repository, repo) {
+				return true
 			}
 		}
-		c.failed = c.failed || r.Status == core.Failed
-		results = append(results, r)
+		return false
 	}
-	return c.printResults(results, *asJSON)
+	found, err := c.engine(listPath).Find([]string{downloadsFolder()}, tracked)
+	if err != nil {
+		return err
+	}
+	if len(found) == 0 {
+		if len(apps) == 0 {
+			fmt.Fprintln(c.stderr, "Nothing from GitHub found on this PC. Add apps and mods by name: reforge add <name>")
+		} else {
+			fmt.Fprintf(c.stderr, "Nothing new: everything from GitHub that Reforge can see is already tracked (%d in your list).\n", len(apps))
+		}
+		return nil
+	}
+	var rows [][]string
+	for _, f := range found {
+		rows = append(rows, []string{f.Name, f.Repository, f.Version, f.Type})
+	}
+	c.table([]string{"Name", "Repository", "Version", "Type"}, rows)
+	if !c.interactive {
+		fmt.Fprintln(c.stderr, "\nRun 'reforge add' in a terminal to pick which to track, or add one by name: reforge add <name>")
+		return nil
+	}
+	added := 0
+	for _, f := range found {
+		question := fmt.Sprintf("Track %s (%s)?", f.Name, f.Repository)
+		app := &applist.App{Name: f.Name, Repository: f.Repository}
+		if f.Type == "Archive" { // a download: new versions are downloaded into the same folder
+			question = fmt.Sprintf("Keep %s (%s) up to date in %s?", f.Name, f.Repository, f.Folder)
+			app.Type, app.Folder, app.InstalledVersion = "download", f.Folder, f.Version
+		}
+		if applist.Find(apps, f.Name) != nil || c.Choose(question, []string{"Yes", "No"}, 1) != 0 {
+			continue
+		}
+		apps = append(apps, app)
+		added++
+	}
+	if added > 0 {
+		if err := applist.Save(listPath, apps); err != nil {
+			return err
+		}
+		fmt.Fprintf(c.stdout, "Tracking %d more app(s).\n", added)
+	}
+	return nil
 }
 
 // trackedAs returns the name an installer app from repo (or an app called name) is tracked as.
@@ -316,7 +340,6 @@ func runList(c *cli, args []string) error {
 	fs := c.flags("list")
 	offline := fs.Bool("offline", false, "only list, without checking GitHub for updates")
 	asJSON := fs.Bool("json", false, "print the list as JSON")
-	fs.BoolVar(&c.refresh, "refresh", false, "ask GitHub again, instead of reusing checks from the last hour")
 	names, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -382,7 +405,6 @@ func statusText(le listEntry) string {
 func runUpdate(c *cli, args []string) error {
 	fs := c.flags("update")
 	asJSON := fs.Bool("json", false, "print the results as JSON")
-	fs.BoolVar(&c.refresh, "refresh", false, "ask GitHub again, instead of reusing checks from the last hour")
 	fs.BoolVar(&c.verbose, "verbose", false, "show more detail")
 	names, err := parse(fs, args)
 	if err != nil {
@@ -451,80 +473,6 @@ func readable(s core.Status) string {
 		return "Needs admin"
 	}
 	return string(s)
-}
-
-func runFind(c *cli, args []string) error {
-	fs := c.flags("find")
-	add := fs.Bool("add", false, "ask about each app found, and track the ones you pick")
-	asJSON := fs.Bool("json", false, "print what's found as JSON")
-	folders, err := parse(fs, args)
-	if err != nil {
-		return err
-	}
-	if len(folders) == 0 {
-		folders = []string{downloadsFolder()}
-	}
-	apps, path, err := c.load()
-	if err != nil {
-		return err
-	}
-	tracked := func(repo string) bool {
-		for _, a := range apps {
-			if strings.EqualFold(a.Repository, repo) {
-				return true
-			}
-		}
-		return false
-	}
-	found, err := c.engine(path).Find(folders, tracked)
-	if err != nil {
-		return err
-	}
-	if *asJSON {
-		if found == nil {
-			found = []core.Candidate{}
-		}
-		return c.json(found)
-	}
-	if len(found) == 0 {
-		if len(apps) == 0 {
-			fmt.Fprintln(c.stderr, "Nothing from GitHub found on this PC. Add apps and mods by name: reforge add <name>")
-		} else {
-			fmt.Fprintf(c.stderr, "Nothing new: everything from GitHub that Reforge can see is already tracked (%d in your list).\n", len(apps))
-		}
-		return nil
-	}
-	var rows [][]string
-	for _, f := range found {
-		rows = append(rows, []string{f.Name, f.Repository, f.Version, f.Type})
-	}
-	c.table([]string{"Name", "Repository", "Version", "Type"}, rows)
-	if !*add {
-		fmt.Fprintln(c.stderr, "\nTrack them with 'reforge find --add' (it asks about each one).")
-		return nil
-	}
-	added := 0
-	for _, f := range found {
-		question := fmt.Sprintf("Track %s (%s)?", f.Name, f.Repository)
-		app := &applist.App{Name: f.Name, Repository: f.Repository}
-		if f.Type == "Archive" {
-			// A download: new versions are downloaded into the same folder
-			question = fmt.Sprintf("Keep %s (%s) up to date in %s?", f.Name, f.Repository, f.Folder)
-			app.Type, app.Folder, app.InstalledVersion = "download", f.Folder, f.Version
-		}
-		if applist.Find(apps, f.Name) != nil || c.Choose(question, []string{"Yes", "No"}, 1) != 0 {
-			continue
-		}
-		apps = append(apps, app)
-		added++
-	}
-	if added > 0 {
-		if err := applist.Save(path, apps); err != nil {
-			return err
-		}
-		fmt.Fprintf(c.stdout, "Tracking %d more app(s).\n", added)
-	}
-	return nil
 }
 
 func runRemove(c *cli, args []string) error {

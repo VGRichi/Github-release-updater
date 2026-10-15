@@ -136,7 +136,7 @@ func TestAddRefuses(t *testing.T) {
 		"a --dest that doesn't exist": {"add", "o/r", "--dest", filepath.Join(t.TempDir(), "missing")},
 		"a folder and --dest":         {"add", "o/r", t.TempDir(), "--dest", t.TempDir()},
 		"a bad --rename":              {"add", "o/r", "--rename", "nope"},
-		"no repository":               {"add"},
+		"--dest without a repository": {"add", "--dest", t.TempDir()},
 	}
 	for desc, args := range tests {
 		if code, _, _ := reforge(t, config, args...); code == 0 {
@@ -180,11 +180,22 @@ func TestAddWithAFolder(t *testing.T) {
 	}
 }
 
-func TestAddAnAppThatIsNotInstalled(t *testing.T) {
-	useFakes(t, &github.Release{Tag: "v1.0", Assets: []github.Asset{{Name: "Tool-x64-setup.exe"}}})
-	code, _, errOut := reforge(t, configIn(t), "add", "o/tool")
-	if code != 1 || !strings.Contains(errOut, "Install it with: reforge install o/tool") {
-		t.Errorf("%d %q", code, errOut)
+func TestAddInstallsAnAppThatIsNotInstalled(t *testing.T) {
+	useFakes(t, &github.Release{Tag: "v1.1.0", Assets: []github.Asset{{Name: "PhotoCraft-x64.msi", Digest: "sha256:x"}}})
+	config := configIn(t)
+	// Nobody to answer "Install it?": nothing is installed or tracked
+	if code, out, errOut := reforge(t, config, "add", "storytold/photocraft"); code != 0 || !strings.Contains(out, "Not installed") || !strings.Contains(errOut, "can't ask here: Install PhotoCraft-x64.msi") {
+		t.Fatalf("%d %q %q", code, out, errOut)
+	}
+	if apps, _ := applist.Load(config); len(apps) != 0 {
+		t.Fatalf("tracked without installing: %v", apps)
+	}
+	// With --yes it's installed and tracked
+	if code, out, _ := reforge(t, config, "add", "storytold/photocraft", "--name", "PhotoCraft", "--yes"); code != 0 || !strings.Contains(out, "Installed") {
+		t.Fatalf("%d %q", code, out)
+	}
+	if apps, _ := applist.Load(config); len(apps) != 1 || apps[0].Name != "PhotoCraft" {
+		t.Fatalf("list: %v", apps)
 	}
 }
 
@@ -247,28 +258,12 @@ func TestUpdateWithNobodyToAsk(t *testing.T) {
 	}
 }
 
-func TestInstallTracksTheApp(t *testing.T) {
-	config := configIn(t)
-	useFakes(t, &github.Release{Tag: "v1.1.0", Assets: []github.Asset{{Name: "PhotoCraft-x64.msi"}}})
-	// No checksum and nobody to ask: nothing is installed or tracked
-	if code, out, _ := reforge(t, config, "install", "storytold/photocraft", "--name", "PhotoCraft", "--allow-unverified", "--yes"); code != 0 || !strings.Contains(out, "Installed") {
-		t.Fatalf("%d %q", code, out)
-	}
-	apps, _ := applist.Load(config)
-	if len(apps) != 1 || apps[0].Name != "PhotoCraft" || !apps[0].AllowUnverified {
-		t.Fatalf("list: %v", apps)
-	}
-	if code, _, errOut := reforge(t, config, "install", "storytold/photocraft"); code != 1 || !strings.Contains(errOut, "already in the list") {
-		t.Errorf("second install: %d %q", code, errOut)
-	}
-}
-
-func TestFindAddAsksWithNobodyToAnswer(t *testing.T) {
+func TestAddWithoutANameListsWhatItFinds(t *testing.T) {
 	config := configIn(t)
 	useFakes(t, nil, system.Program{Name: "PhotoCraft", Version: "1.0", Links: []string{"https://github.com/storytold/photocraft"}})
-	code, out, _ := reforge(t, config, "find", t.TempDir(), "--add")
-	if code != 0 || !strings.Contains(out, "storytold/photocraft") {
-		t.Fatalf("%d %q", code, out)
+	code, out, errOut := reforge(t, config, "add")
+	if code != 0 || !strings.Contains(out, "storytold/photocraft") || !strings.Contains(errOut, "Run 'reforge add' in a terminal") {
+		t.Fatalf("%d %q %q", code, out, errOut)
 	}
 	if apps, _ := applist.Load(config); len(apps) != 0 {
 		t.Error("nobody answered, so nothing should be tracked")
@@ -344,14 +339,14 @@ func TestAddByNameShowsGitHubErrors(t *testing.T) {
 	}
 }
 
-func TestFindSaysWhyNothingIsNew(t *testing.T) {
+func TestAddWithoutANameSaysWhyNothingIsNew(t *testing.T) {
 	useFakes(t, nil)
 	config := configIn(t)
-	if _, _, errOut := reforge(t, config, "find"); !strings.Contains(errOut, "Nothing from GitHub found on this PC") {
+	if _, _, errOut := reforge(t, config, "add"); !strings.Contains(errOut, "Nothing from GitHub found on this PC") {
 		t.Errorf("empty list: %q", errOut)
 	}
 	applist.Save(config, []*applist.App{{Name: "A", Repository: "o/a"}, {Name: "B", Repository: "o/b"}})
-	if _, _, errOut := reforge(t, config, "find"); !strings.Contains(errOut, "already tracked (2 in your list)") {
+	if _, _, errOut := reforge(t, config, "add"); !strings.Contains(errOut, "already tracked (2 in your list)") {
 		t.Errorf("tracked apps: %q", errOut)
 	}
 }

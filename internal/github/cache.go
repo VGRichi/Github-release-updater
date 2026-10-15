@@ -10,9 +10,8 @@ import (
 
 // Cache remembers recent answers about repositories' latest releases, so asking again soon after
 // (reforge list, then reforge update) doesn't spend GitHub's hourly limit again. Like a package
-// manager's catalog, it's refreshed after MaxAge; set MaxAge to 0 to always ask GitHub.
+// manager's catalog, an answer is refreshed after an hour.
 type Cache struct {
-	MaxAge   time.Duration
 	path     string
 	releases map[string]cacheEntry
 	now      func() time.Time
@@ -24,8 +23,8 @@ type cacheEntry struct {
 }
 
 const (
-	// DefaultMaxAge is how long a check is reused.
-	DefaultMaxAge = time.Hour
+	// maxAge is how long a check is reused.
+	maxAge = time.Hour
 	// A release published shortly before it was checked may still be getting its files attached
 	// (Reforge's own releases are), so that answer is only reused briefly.
 	newRelease, newReleaseMaxAge = time.Hour, 5 * time.Minute
@@ -37,7 +36,7 @@ const (
 // OpenCache reads the cache file at path. A missing or broken file is an empty cache: it's only a
 // shortcut, so losing it just means asking GitHub again.
 func OpenCache(path string) *Cache {
-	c := &Cache{MaxAge: DefaultMaxAge, path: path, releases: map[string]cacheEntry{}, now: time.Now}
+	c := &Cache{path: path, releases: map[string]cacheEntry{}, now: time.Now}
 	if data, err := os.ReadFile(path); err == nil {
 		json.Unmarshal(data, &c.releases)
 	}
@@ -53,11 +52,11 @@ func (c *Cache) recent(repo string, prerelease bool) (*Release, bool) {
 	if !ok {
 		return nil, false
 	}
-	maxAge := c.MaxAge
+	age := maxAge
 	if e.Release != nil && e.Checked.Sub(e.Release.Published) < newRelease {
-		maxAge = min(maxAge, newReleaseMaxAge)
+		age = newReleaseMaxAge
 	}
-	return e.Release, c.now().Sub(e.Checked) < maxAge
+	return e.Release, c.now().Sub(e.Checked) < age
 }
 
 func (c *Cache) noStable(repo string) bool {

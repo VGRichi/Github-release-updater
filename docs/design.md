@@ -11,13 +11,15 @@ the old script. Never reuse a deleted version tag.
 ## Commands
 
 ```
-reforge add <owner/repo>       start tracking an app or tool
-reforge install <owner/repo>   install an app for the first time, and track it
-reforge list [name...]         list what's tracked: installed and latest versions, folders
-reforge update [name...]       install the updates
-reforge find                   find installed apps and downloaded tools that come from GitHub
-reforge remove <name...>       stop tracking
+reforge add [name]           track an app, mod or tool (installing it first if needed);
+                             with no name, find what's on this PC and pick what to track
+reforge list [name...]       list what's tracked: installed and latest versions, folders
+reforge update [name...]     install the updates
+reforge remove <name...>     stop tracking
 ```
+
+Few commands that each do the whole job: `add` finds the repository, works out the kind of app, and
+installs it if needed, so there's no separate install or find command.
 
 Flags mirror the module's parameters (`--name`, `--dest`, `--subfolder`, `--include`, `--keep`,
 `--rename from=to`, `--pattern`, `--silent-args`, `--prerelease`, `--allow-unverified`, `--force`,
@@ -53,7 +55,7 @@ it doesn't end up in shell history.
   download's note), else from GitHub's search, ranked exact name first, then stars, archived last;
   each match with releases is asked about (Yes/No, up to 5; nobody to ask = No).
 - **Fewer API requests** (60 an hour without a token, per internet connection): answers about latest
-  releases are reused for an hour (`cache.json` next to the list; `--refresh` asks again), a release
+  releases are reused for an hour (`cache.json` next to the list), a release
   published less than an hour before it was checked only for 5 minutes (its files may still be
   uploading), and "no stable release" is remembered for a day, saving a request per check. Rate-limit
   errors say when the limit resets and how to sign in. Only the official API is used: ETag requests
@@ -66,7 +68,7 @@ it doesn't end up in shell history.
 | Package | Job |
 |---|---|
 | `cmd/reforge` | flags, output, prompts |
-| `internal/core` | update, install and find: the rules, independent of the OS |
+| `internal/core` | add, update and find: the rules, independent of the OS |
 | `internal/system` | the OS: installed apps, running installers, admin check, download notes, winget |
 | `internal/github` | releases API, downloads with checksum checks |
 | `internal/pick` | choosing the release file |

@@ -75,15 +75,14 @@ curl -L https://github.com/VGRichi/Reforge/releases/latest/download/reforge_linu
 ## Usage
 
 ```sh
-reforge install storytold/pdfcraft    # download and install an app, and track it
-reforge add dxvk                      # track an app, mod or tool you already have
-reforge find --add                    # find what you already have, and pick what to track
-reforge list                          # what you track, and which have updates
-reforge update                        # install the updates
-reforge remove dxvk                   # stop tracking (doesn't uninstall)
+reforge add                 # find what's on your PC from GitHub, and pick what to track
+reforge add dxvk            # track an app, mod or tool by name (installs it if it isn't installed yet)
+reforge list                # what you track, and which have updates
+reforge update              # install the updates
+reforge remove dxvk         # stop tracking (doesn't uninstall)
 ```
 
-Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. GitHub allows 60 checks an hour without signing in; Reforge reuses checks from the last hour (`--refresh` to check again). For 5,000 an hour, sign in with the [GitHub CLI](https://cli.github.com) (`gh auth login`), which Reforge uses automatically, or set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens).
+Every command has `--help` with all its options, like `--prerelease` to follow beta releases, `--pattern` to pick the release file yourself, or `--json` for scripts. Apps installed for all users need an administrator terminal. GitHub allows 60 checks an hour without signing in, and Reforge reuses each check for an hour; for 5,000 an hour, sign in with the [GitHub CLI](https://cli.github.com) (`gh auth login`), which Reforge uses automatically, or set `GITHUB_TOKEN` to a [GitHub token](https://github.com/settings/tokens).
 
 ## Security
 

@@ -17,7 +17,9 @@ import (
 // release has:
 //   - an installed app whose release has an installer is updated with that installer, and named the
 //     way Installed apps shows it;
-//   - a release of archives (like DXVK or OptiScaler) is a download, kept up to date in the folder
+//   - an app with an installer that isn't installed yet returns a NotInstalledError, so it can be
+//     installed first;
+//   - a release of archives only (like DXVK or OptiScaler) is a download, kept up to date in the folder
 //     where you have it: the folders are searched two levels deep for its archives or extracted
 //     folders, which also tell the version you have. With none, it goes in the first folder.
 func (e *Engine) Prepare(app *applist.App, folders []string) error {
@@ -44,6 +46,7 @@ func (e *Engine) Prepare(app *applist.App, folders []string) error {
 			}
 			return nil
 		}
+		return &NotInstalledError{name}
 	}
 	if pick.Archive(release.Assets, app.Pattern, e.Arch) != nil {
 		app.Type, app.Name = "download", name
@@ -52,9 +55,6 @@ func (e *Engine) Prepare(app *applist.App, folders []string) error {
 			app.Folder = folders[0]
 		}
 		return nil
-	}
-	if installer != nil {
-		return fmt.Errorf("%s isn't installed. Install it with: reforge install %s", name, app.Repository)
 	}
 	return errors.New("its latest release has no Windows installer and no .zip, .7z or .tar.gz file")
 }
@@ -113,3 +113,9 @@ func FindDownloaded(folders []string, repo string) (folder, ver string) {
 	}
 	return folder, ver
 }
+
+// NotInstalledError is Prepare's answer for an app whose release has an installer but that isn't
+// installed: it can be installed first (Engine.Install).
+type NotInstalledError struct{ Name string }
+
+func (e *NotInstalledError) Error() string { return e.Name + " isn't installed" }
