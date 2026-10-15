@@ -137,7 +137,8 @@ func (c *cli) repository(listPath, typed string) (string, error) {
 
 // lookUp finds the repository for a name: on this PC first (an installed app linking to GitHub, or a
 // download from GitHub), then by searching GitHub, asking about the likeliest matches one at a time.
-// Matches without releases are skipped, since there'd be nothing to track.
+// Only the match you pick is checked for releases (one API request, not one per match); one without
+// releases has nothing to track, so the next match is asked about.
 func (c *cli) lookUp(listPath, name string) (string, error) {
 	e := c.engine(listPath)
 	repo, err := e.LocalRepo(name, []string{downloadsFolder()})
@@ -152,25 +153,25 @@ func (c *cli) lookUp(listPath, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	asked := 0
-	for _, r := range repos {
+	for i, r := range repos {
+		if i == 5 || (i > 0 && !c.interactive) {
+			break
+		}
+		about := fmt.Sprintf("★ %d", r.Stars)
+		if r.Description != "" {
+			about += ": " + shorten(r.Description, 70)
+		}
+		if c.Choose(fmt.Sprintf("Is it %s? %s", r.FullName, about), []string{"Yes", "No"}, 1) != 0 {
+			continue
+		}
 		release, err := e.GitHub.Latest(r.FullName, false)
 		if err != nil { // like GitHub's hourly limit: say so, rather than "no repository chosen"
 			return "", err
 		}
-		if release == nil {
-			continue
-		}
-		about := fmt.Sprintf("★ %d, latest %s", r.Stars, release.Tag)
-		if r.Description != "" {
-			about += ": " + shorten(r.Description, 70)
-		}
-		if c.Choose(fmt.Sprintf("Is it %s? %s", r.FullName, about), []string{"Yes", "No"}, 1) == 0 {
+		if release != nil {
 			return r.FullName, nil
 		}
-		if asked++; asked == 5 || !c.interactive {
-			break
-		}
+		fmt.Fprintf(c.stderr, "%s has no releases, so there's nothing to track.\n", r.FullName)
 	}
 	return "", fmt.Errorf("no repository chosen for '%s'. If you know it, add it as owner/repo, like reforge add doitsujin/dxvk", name)
 }
