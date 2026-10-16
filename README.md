@@ -17,8 +17,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/github/license/VGRichi/Reforge" alt="MIT license"></a>
 </p>
 
-
-
 ## Features
 
 - **Downloads and installs apps** straight from a GitHub repository's latest release
@@ -90,6 +88,7 @@ Every command has `--help` with all its options, like `--prerelease` to follow b
 - **Without one:** you're asked: **Yes**, **Always** (trust this app), or **No**. If the app's earlier releases had checksums, it always asks.
 - **Size:** a download that isn't the size GitHub lists is broken, and nothing is installed.
 - **Digital signature:** a signed installer whose signature is broken (changed after signing) is never installed. Reforge remembers who signs each app; if a release is suddenly signed by someone else, or not signed any more, it warns and asks.
+- **Archives:** nothing is extracted outside its folder, links are refused, and an archive that unpacks to far more than its size (a zip bomb) is rejected.
 - **Nobody to ask** (a scheduled task): the answer is No.
 
 A checksum proves you got exactly the file on the release page, and a signature that the developer made it, but neither proves the app is safe. Only track apps from developers you trust. DLL mods can trigger anti-cheat in online games.

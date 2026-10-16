@@ -3,7 +3,6 @@ package pick
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 
 	"github.com/VGRichi/Reforge/internal/github"
@@ -125,21 +124,14 @@ func archScore(name string, arch Arch) int {
 // best returns the highest-scoring asset, never one for another architecture (a negative score).
 // Ties go to the earlier file in the release.
 func best(assets []github.Asset, score func(github.Asset) (int, bool)) *github.Asset {
-	type scored struct {
-		asset *github.Asset
-		score int
-	}
-	var list []scored
+	var top *github.Asset
+	high := -1
 	for i := range assets {
-		if s, ok := score(assets[i]); ok && s >= 0 {
-			list = append(list, scored{&assets[i], s})
+		if s, ok := score(assets[i]); ok && s > high {
+			top, high = &assets[i], s
 		}
 	}
-	sort.SliceStable(list, func(i, j int) bool { return list[i].score > list[j].score })
-	if len(list) == 0 {
-		return nil
-	}
-	return list[0].asset
+	return top
 }
 
 func byPattern(assets []github.Asset, pattern string) *github.Asset {

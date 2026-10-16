@@ -83,36 +83,25 @@ func (c *cli) matching(apps []*applist.App, patterns []string) []*applist.App {
 		return apps
 	}
 	var found []*applist.App
+	used := make([]bool, len(patterns))
 	for _, a := range apps {
-		if matchesAny(a.Name, patterns) {
+		matched := false
+		for i, p := range patterns {
+			if wildcard.Match(p, a.Name) {
+				matched, used[i] = true, true
+			}
+		}
+		if matched {
 			found = append(found, a)
 		}
 	}
-	for _, p := range patterns {
-		if !anyMatch(apps, p) {
+	for i, p := range patterns {
+		if !used[i] {
 			c.warn(fmt.Sprintf("no app named '%s' in the list. Check the names with 'reforge list'.", p))
 			c.failed = true
 		}
 	}
 	return found
-}
-
-func matchesAny(name string, patterns []string) bool {
-	for _, p := range patterns {
-		if wildcard.Match(p, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func anyMatch(apps []*applist.App, pattern string) bool {
-	for _, a := range apps {
-		if wildcard.Match(pattern, a.Name) {
-			return true
-		}
-	}
-	return false
 }
 
 // isTracked reports whether an app from repo is in the list.

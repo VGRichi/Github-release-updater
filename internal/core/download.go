@@ -20,7 +20,7 @@ import (
 // moved to the backups, since you may have changed files in it.
 func (e *Engine) updateDownload(app *applist.App, release *github.Release, r *Result) error {
 	r.Installed = app.InstalledVersion
-	if !isDir(app.Folder) {
+	if !archive.IsDir(app.Folder) {
 		r.set(Skipped, "Folder not found: "+app.Folder)
 		return nil
 	}
@@ -76,7 +76,7 @@ func (e *Engine) replaceExtracted(app *applist.App, asset *github.Asset, file, o
 		src, name = filepath.Join(extracted, entries[0].Name()), entries[0].Name()
 	}
 	newFolder := filepath.Join(app.Folder, name)
-	if newFolder != old && isDir(newFolder) {
+	if newFolder != old && archive.IsDir(newFolder) {
 		return "", fmt.Errorf("%s already exists; move it away and try again", newFolder)
 	}
 	// The old folder goes to the backups first, which also makes room if both have the same name
@@ -115,6 +115,10 @@ func ExtractedFolder(dir, repo, ver string) string {
 // their names (Optiscaler_0.9.4.7z, dxvk-3.1.1). It returns "" when there are none.
 func DetectVersion(dir, repo string) string {
 	entries, _ := os.ReadDir(dir)
+	return newestVersion(entries, repo)
+}
+
+func newestVersion(entries []fs.DirEntry, repo string) string {
 	var best version.Version
 	found := ""
 	for _, e := range entries {
@@ -136,8 +140,8 @@ func DetectVersion(dir, repo string) string {
 // folders, and returns the folder with the newest version, and that version. It returns "" with none.
 func FindDownloaded(folders []string, repo string) (folder, ver string) {
 	var best version.Version
-	eachFolder(folders, func(dir string) {
-		if found := DetectVersion(dir, repo); found != "" {
+	eachFolder(folders, func(dir string, entries []fs.DirEntry) {
+		if found := newestVersion(entries, repo); found != "" {
 			if v := version.Parse(found); best == nil || version.Compare(v, best) > 0 {
 				best, folder, ver = v, dir, found
 			}
@@ -146,19 +150,24 @@ func FindDownloaded(folders []string, repo string) (folder, ver string) {
 	return folder, ver
 }
 
-// eachFolder calls visit for each folder and its subfolders two levels deep, like Downloads\Mods\Game.
-func eachFolder(roots []string, visit func(dir string)) {
+// eachFolder calls visit with what's in each folder and its subfolders two levels deep, like
+// Downloads\Mods\Game. Each folder is read once.
+func eachFolder(roots []string, visit func(dir string, entries []fs.DirEntry)) {
+	var walk func(dir string, depth int)
+	walk = func(dir string, depth int) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		visit(dir, entries)
+		for _, e := range entries {
+			if depth < 2 && e.IsDir() {
+				walk(filepath.Join(dir, e.Name()), depth+1)
+			}
+		}
+	}
 	for _, root := range roots {
-		filepath.WalkDir(root, func(dir string, d fs.DirEntry, err error) error {
-			if err != nil || !d.IsDir() {
-				return nil
-			}
-			if rel, _ := filepath.Rel(root, dir); rel != "." && strings.Count(rel, string(filepath.Separator)) >= 2 {
-				return filepath.SkipDir
-			}
-			visit(dir)
-			return nil
-		})
+		walk(root, 0)
 	}
 }
 
