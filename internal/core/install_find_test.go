@@ -166,6 +166,15 @@ func TestBaseNameAndFindProgram(t *testing.T) {
 	if FindProgram(programs, "Other") != nil {
 		t.Error("no match expected")
 	}
+	// The closest name wins, wherever it is in the list: GitHub Desktop (per-user, so listed first) isn't Git
+	programs = []system.Program{{Name: "GitHub Desktop"}, {Name: "Git"}, {Name: "Git Extensions"}}
+	if p := FindProgram(programs, "Git"); p == nil || p.Name != "Git" {
+		t.Errorf("Git: got %v", p)
+	}
+	programs = []system.Program{{Name: "GitHub Desktop"}, {Name: "Git version 2.47.1"}}
+	if p := FindProgram(programs, "Git version 2.46.0"); p == nil || p.Name != "Git version 2.47.1" {
+		t.Errorf("Git by base name: got %v", p)
+	}
 }
 
 func notTracked(string) bool { return false }

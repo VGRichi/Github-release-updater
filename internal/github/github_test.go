@@ -41,7 +41,7 @@ func TestLatestStable(t *testing.T) {
 
 func TestLatestFallsBackToPrereleaseWithoutStable(t *testing.T) {
 	c := fakeGitHub(t, map[string]string{
-		"/repos/o/r/releases?per_page=10": `[{"tag_name":"v3-draft","draft":true},{"tag_name":"v2.0.0-beta","prerelease":true}]`,
+		"/repos/o/r/releases?per_page=5": `[{"tag_name":"v3-draft","draft":true},{"tag_name":"v2.0.0-beta","prerelease":true}]`,
 	}, nil)
 	for _, pre := range []bool{false, true} {
 		r, err := c.Latest("o/r", pre)
@@ -52,7 +52,7 @@ func TestLatestFallsBackToPrereleaseWithoutStable(t *testing.T) {
 }
 
 func TestLatestWithNoReleases(t *testing.T) {
-	c := fakeGitHub(t, map[string]string{"/repos/o/r/releases?per_page=10": `[]`}, nil)
+	c := fakeGitHub(t, map[string]string{"/repos/o/r/releases?per_page=5": `[]`}, nil)
 	if r, err := c.Latest("o/r", false); r != nil || err != nil {
 		t.Fatalf("got %v, %v", r, err)
 	}
@@ -176,7 +176,7 @@ func (s *releasesServer) start(t *testing.T) *Client {
 				return
 			}
 			w.Write([]byte(release))
-		case "/repos/o/r/releases?per_page=10":
+		case "/repos/o/r/releases?per_page=5":
 			w.Write([]byte("[" + release + "]"))
 		default:
 			http.NotFound(w, r)
@@ -202,6 +202,7 @@ func TestCacheReusesRecentChecks(t *testing.T) {
 		if r, err := c.Latest("o/r", false); err != nil || r.Tag != "v1.0.0" {
 			t.Fatalf("got %+v, %v", r, err)
 		}
+		c.Cache.Save()
 	}
 	if s.requests != 1 {
 		t.Errorf("%d requests; checks within the hour should reuse the first", s.requests)
@@ -269,5 +270,75 @@ func TestLimitMessage(t *testing.T) {
 	h.Set("X-RateLimit-Reset", "1000030")
 	if got := c.limitMessage(h); got != "GitHub's limit of 5000 checks an hour was reached; it resets in 1 minute" {
 		t.Errorf("with a token: %q", got)
+	}
+}
+
+func TestStopsAskingOnceTheLimitIsReached(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), API: srv.URL}
+	for _, repo := range []string{"o/a", "o/b", "o/c"} {
+		if _, err := c.Latest(repo, false); err == nil || !strings.Contains(err.Error(), "limit") {
+			t.Fatalf("%s: got %v", repo, err)
+		}
+	}
+	if requests != 1 {
+		t.Errorf("%d requests; after the limit, GitHub shouldn't be asked again", requests)
+	}
+}
+
+func TestTokenIsLookedUpOnlyWhenNeeded(t *testing.T) {
+	lookups := 0
+	c := fakeGitHub(t, map[string]string{"/repos/o/r/releases/latest": `{"tag_name":"v1"}`}, nil)
+	c.Auth = func() string { lookups++; return "secret" }
+	c.Cache = OpenCache(filepath.Join(t.TempDir(), "cache.json"))
+	c.Cache.put("o/r", false, &Release{Tag: "v1"})
+	c.Latest("o/r", false) // from the cache: no request, so no token needed (no 'gh auth token' run)
+	if lookups != 0 {
+		t.Fatalf("%d token lookups for a cached answer", lookups)
+	}
+	c.Latest("o/r", true)
+	c.Latest("o/s", true)
+	if lookups != 1 {
+		t.Errorf("%d token lookups; the token is found once", lookups)
+	}
+}
+
+func TestCacheIgnoresTimesInTheFuture(t *testing.T) {
+	now := time.Now()
+	s := &releasesServer{published: now.Add(-48 * time.Hour)}
+	c := s.start(t)
+	path := filepath.Join(t.TempDir(), "cache.json")
+	os.WriteFile(path, fmt.Appendf(nil, `{"o/r stable":{"release":{"tag_name":"v0.0.1"},"checked":%q}}`, now.Add(1000*time.Hour).Format(time.RFC3339)), 0o644)
+	c.Cache = OpenCache(path)
+	if r, _ := c.Latest("o/r", false); r == nil || r.Tag != "v1.0.0" || s.requests != 1 {
+		t.Fatalf("got %+v after %d requests", r, s.requests)
+	}
+}
+
+func TestDownloadFailures(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/missing" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte("0123456789")) // more than listed
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client()}
+	for path, want := range map[string]string{"/missing": "404", "/long": "the download is broken"} {
+		dir := t.TempDir()
+		_, err := c.Download(Asset{Name: "a.zip", URL: srv.URL + path, Size: 4}, dir)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: got %v", path, err)
+		}
+		if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+			t.Errorf("%s: a failed download must leave nothing", path)
+		}
 	}
 }

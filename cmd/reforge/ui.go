@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/VGRichi/Reforge/internal/core"
+	"github.com/VGRichi/Reforge/internal/github"
 )
 
 // cli holds what every command shares: where to read and write, and the list file.
@@ -19,6 +22,8 @@ type cli struct {
 	configPath  string
 	verbose     bool
 	failed      bool // a command finished, but something in it failed (exit code 1)
+	eng         *core.Engine
+	cache       *github.Cache
 }
 
 func newCLI(stdin io.Reader, stdout, stderr io.Writer) *cli {

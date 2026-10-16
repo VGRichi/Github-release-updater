@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -188,7 +189,7 @@ func silentArgs(file string) string {
 	}
 	defer f.Close()
 	buf := make([]byte, 4<<20)
-	n, _ := f.Read(buf)
+	n, _ := io.ReadFull(f, buf) // one Read may return less
 	switch {
 	case bytes.Contains(buf[:n], []byte("Inno Setup")):
 		return "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART"

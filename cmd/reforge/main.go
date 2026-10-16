@@ -15,6 +15,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/VGRichi/Reforge/internal/archive"
 )
 
 // version is set when building a release: go build -ldflags "-X main.version=1.0.0"
@@ -89,6 +91,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	c := newCLI(stdin, stdout, stderr)
 	err := cmd(c, args[1:])
+	if c.cache != nil {
+		c.cache.Save()
+	}
 	switch {
 	case errors.Is(err, flag.ErrHelp):
 		return 0
@@ -154,8 +159,8 @@ type renames map[string]string
 func (r renames) String() string { return "" }
 func (r renames) Set(v string) error {
 	from, to, ok := strings.Cut(v, "=")
-	if !ok || from == "" || to == "" {
-		return errors.New("use --rename old.dll=new.dll")
+	if !ok || !archive.ValidName(from) || !archive.ValidName(to) {
+		return errors.New("use --rename old.dll=new.dll (file names, not paths)")
 	}
 	r[from] = to
 	return nil

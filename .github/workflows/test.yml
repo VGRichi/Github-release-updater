@@ -34,3 +34,8 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      # Checks run in parallel, so look for data races too (needs a C compiler, which Linux has)
+      - name: Test for races
+        if: runner.os == 'Linux'
+        run: go test -race ./...

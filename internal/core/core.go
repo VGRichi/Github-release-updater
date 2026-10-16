@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/VGRichi/Reforge/internal/applist"
@@ -19,6 +20,7 @@ import (
 	"github.com/VGRichi/Reforge/internal/github"
 	"github.com/VGRichi/Reforge/internal/pick"
 	"github.com/VGRichi/Reforge/internal/system"
+	"github.com/VGRichi/Reforge/internal/version"
 )
 
 // Releases is where releases come from (GitHub).
@@ -77,6 +79,69 @@ type Engine struct {
 
 	programs []system.Program
 	loaded   bool
+	checked  map[string]checked // Check's answers, by repository
+}
+
+type checked struct {
+	release *github.Release
+	err     error
+}
+
+// checkers is how many apps Check asks GitHub about at once.
+const checkers = 6
+
+// Check asks GitHub about the apps' latest releases all at once, so Update, run for each app in turn,
+// doesn't wait for each answer one after another. Installer apps that aren't installed are left out,
+// since Update doesn't ask about them either.
+func (e *Engine) Check(apps []*applist.App) {
+	var todo []*applist.App
+	seen := map[string]bool{}
+	for _, app := range apps {
+		k := checkKey(app)
+		if seen[k] {
+			continue
+		}
+		if app.IsInstaller() {
+			programs, err := e.installedPrograms()
+			if err != nil || FindProgram(programs, app.Name) == nil {
+				continue
+			}
+		}
+		seen[k] = true
+		todo = append(todo, app)
+	}
+	answers := make([]checked, len(todo))
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, checkers)
+	for i, app := range todo {
+		wg.Go(func() {
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			answers[i].release, answers[i].err = e.GitHub.Latest(app.Repository, app.Prerelease)
+		})
+	}
+	wg.Wait()
+	e.checked = map[string]checked{}
+	for i, app := range todo {
+		e.checked[checkKey(app)] = answers[i]
+	}
+}
+
+func checkKey(app *applist.App) string {
+	return fmt.Sprintf("%s %v", strings.ToLower(app.Repository), app.Prerelease)
+}
+
+// latest is the app's latest release, from Check if it asked already.
+func (e *Engine) latest(app *applist.App) (*github.Release, error) {
+	if c, ok := e.checked[checkKey(app)]; ok {
+		return c.release, c.err
+	}
+	return e.GitHub.Latest(app.Repository, app.Prerelease)
+}
+
+// sameVersion reports whether a tool's installed version is the release's, however each is written.
+func sameVersion(installed, tag string) bool {
+	return installed == tag || version.Same(installed, tag)
 }
 
 // Update checks one app and installs its latest release if it's newer. It may change the app (what it
@@ -102,7 +167,7 @@ func (e *Engine) update(app *applist.App, r *Result) error {
 			return nil
 		}
 	}
-	release, err := e.GitHub.Latest(app.Repository, app.Prerelease)
+	release, err := e.latest(app)
 	if err != nil || release == nil {
 		r.set(Skipped, "No releases found")
 		return err
@@ -158,8 +223,10 @@ var (
 func (e *Engine) CleanWorkRoot() {
 	entries, _ := os.ReadDir(e.WorkRoot)
 	for _, entry := range entries {
-		info, err := entry.Info()
-		if err == nil && entry.IsDir() && workFolder.MatchString(entry.Name()) && info.ModTime().Before(e.now().Add(-24*time.Hour)) {
+		if !entry.IsDir() || !workFolder.MatchString(entry.Name()) { // before Info: Temp can hold thousands
+			continue
+		}
+		if info, err := entry.Info(); err == nil && info.ModTime().Before(e.now().Add(-24*time.Hour)) {
 			os.RemoveAll(filepath.Join(e.WorkRoot, entry.Name()))
 		}
 	}

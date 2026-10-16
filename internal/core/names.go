@@ -35,23 +35,31 @@ func BaseName(name string) string {
 	return strings.TrimSpace(spaces.ReplaceAllString(versionInName.ReplaceAllString(name, "$1"), " "))
 }
 
-// FindProgram finds the installed app for a tracked name: the name as part of the installed name, or
-// else the same name once version numbers are left out.
+// FindProgram finds the installed app for a tracked name, closest first: the same name, then the same
+// name once version numbers are left out, then the shortest name with the name in it (so "Git" is Git,
+// not "GitHub Desktop").
 func FindProgram(programs []system.Program, name string) *system.Program {
-	lower := strings.ToLower(name)
+	lower, base := strings.ToLower(name), BaseName(name)
+	var sameBase, part *system.Program
 	for i := range programs {
-		if strings.Contains(strings.ToLower(programs[i].Name), lower) {
-			return &programs[i]
-		}
-	}
-	if base := BaseName(name); base != "" {
-		for i := range programs {
-			if strings.EqualFold(BaseName(programs[i].Name), base) {
-				return &programs[i]
+		p := &programs[i]
+		switch {
+		case strings.EqualFold(p.Name, name):
+			return p
+		case base != "" && strings.EqualFold(BaseName(p.Name), base):
+			if sameBase == nil {
+				sameBase = p
+			}
+		case strings.Contains(strings.ToLower(p.Name), lower):
+			if part == nil || len(p.Name) < len(part.Name) {
+				part = p
 			}
 		}
 	}
-	return nil
+	if sameBase != nil {
+		return sameBase
+	}
+	return part
 }
 
 // repoFromLinks is the GitHub repository an installed app's links point to, or "".

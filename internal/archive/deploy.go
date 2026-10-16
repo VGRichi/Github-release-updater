@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/VGRichi/Reforge/internal/wildcard"
 )
@@ -14,6 +15,9 @@ import (
 // ContentRoot finds the folder to copy from: subfolder (like DXVK's x64) if given, after stepping into
 // single wrapper folders like dxvk-2.5/.
 func ContentRoot(extracted, subfolder string) (string, error) {
+	if subfolder != "" && !filepath.IsLocal(filepath.FromSlash(subfolder)) {
+		return "", fmt.Errorf("subfolder '%s' must be a folder inside the archive", subfolder)
+	}
 	root := extracted
 	for {
 		if subfolder != "" {
@@ -79,6 +83,9 @@ func Copy(src, dest, backupDir string, opt Options, journal *Journal) (int, erro
 		}
 		leaf := name
 		if to, ok := opt.Rename[name]; ok {
+			if !ValidName(to) {
+				return fmt.Errorf("can't rename %s to '%s': a new name is a file name, not a path", name, to)
+			}
 			leaf = to
 		}
 		relTarget := filepath.Join(filepath.Dir(rel), leaf)
@@ -142,10 +149,11 @@ func PruneBackups(appBackupDir string, keep int) {
 	}
 }
 
-// Move moves a file or folder, also to another drive (where a rename can't).
+// Move moves a file or folder, also to another drive (where a rename can't). Any other failure, like a
+// file in use, is returned as it is: copying and then deleting could leave half of src behind.
 func Move(src, dst string) error {
-	if err := os.Rename(src, dst); err == nil {
-		return nil
+	if err := os.Rename(src, dst); err == nil || !otherDrive(err) {
+		return err
 	}
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -163,6 +171,11 @@ func Move(src, dst string) error {
 		return err
 	}
 	return os.RemoveAll(src)
+}
+
+// ValidName reports whether name is a plain file name, so a rename can't reach outside the folder.
+func ValidName(name string) bool {
+	return filepath.IsLocal(name) && !strings.ContainsAny(name, `/\`)
 }
 
 func matchAny(patterns []string, names ...string) bool {

@@ -24,7 +24,7 @@ func (e *Engine) updateDownload(app *applist.App, release *github.Release, r *Re
 		r.set(Skipped, "Folder not found: "+app.Folder)
 		return nil
 	}
-	if app.InstalledVersion == release.Tag || version.Same(app.InstalledVersion, release.Tag) {
+	if sameVersion(app.InstalledVersion, release.Tag) {
 		r.Status = UpToDate
 		return nil
 	}
@@ -89,7 +89,9 @@ func (e *Engine) replaceExtracted(app *applist.App, asset *github.Asset, file, o
 		return "", fmt.Errorf("couldn't move the old folder %s to the backups (is something using it?): %v", old, err)
 	}
 	if err := archive.Move(src, newFolder); err != nil {
-		archive.Move(backup, old)
+		if undoErr := archive.Move(backup, old); undoErr != nil {
+			e.warn("%s: couldn't put the old folder back; it's in %s", app.Name, backup)
+		}
 		return "", err
 	}
 	e.verbose("The old folder was moved to %s", backup)
@@ -116,11 +118,15 @@ func DetectVersion(dir, repo string) string {
 	var best version.Version
 	found := ""
 	for _, e := range entries {
-		if !namedLike(e.Name(), repo) || (!e.IsDir() && !pick.IsArchive(e.Name())) {
+		name := e.Name()
+		if !namedLike(name, repo) || (!e.IsDir() && !pick.IsArchive(name)) {
 			continue
 		}
-		if v := version.Parse(e.Name()); v != nil && (best == nil || version.Compare(v, best) > 0) {
-			best, found = v, version.Text(e.Name())
+		if !e.IsDir() {
+			name = archiveBase(name) // the 7 of .7z isn't part of the version
+		}
+		if v := version.Parse(name); v != nil && (best == nil || version.Compare(v, best) > 0) {
+			best, found = v, version.Text(name)
 		}
 	}
 	return found

@@ -90,6 +90,11 @@ func (windowsSystem) RunInstaller(file, args string) (int, error) {
 	const seeMaskNoCloseProcess, seeMaskNoAsync, swShowNormal = 0x40, 0x100, 1
 	info := shellExecuteInfo{mask: seeMaskNoCloseProcess | seeMaskNoAsync, show: swShowNormal}
 	info.size = uint32(unsafe.Sizeof(info))
+	if !filepath.IsAbs(file) { // like msiexec.exe: Windows' own, never one in the current folder
+		if dir, err := windows.GetSystemDirectory(); err == nil {
+			file = filepath.Join(dir, file)
+		}
+	}
 	info.file, _ = windows.UTF16PtrFromString(file)
 	if args != "" {
 		info.parameters, _ = windows.UTF16PtrFromString(args)

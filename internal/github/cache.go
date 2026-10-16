@@ -5,16 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Cache remembers recent answers about repositories' latest releases, so asking again soon after
 // (reforge list, then reforge update) doesn't spend GitHub's hourly limit again. Like a package
-// manager's catalog, an answer is refreshed after an hour.
+// manager's catalog, an answer is refreshed after an hour. It's safe to use from several goroutines.
 type Cache struct {
 	path     string
 	releases map[string]cacheEntry
 	now      func() time.Time
+	mu       sync.Mutex
+	changed  bool
 }
 
 type cacheEntry struct {
@@ -29,7 +32,7 @@ const (
 	// (Reforge's own releases are), so that answer is only reused briefly.
 	newRelease, newReleaseMaxAge = time.Hour, 5 * time.Minute
 	// noStableMaxAge is how long "no stable release" is remembered, which saves a request per check
-	// for repositories that only publish prereleases.
+	// for repositories that only publish prereleases. Nothing is kept longer.
 	noStableMaxAge = 24 * time.Hour
 )
 
@@ -45,9 +48,18 @@ func OpenCache(path string) *Cache {
 
 func key(repo, kind string) string { return strings.ToLower(repo) + " " + kind }
 
+// fresh reports whether an entry checked at t is younger than maxAge. A time in the future (a clock
+// that was wrong, or an edited file) isn't trusted.
+func (c *Cache) fresh(t time.Time, maxAge time.Duration) bool {
+	age := c.now().Sub(t)
+	return age >= 0 && age < maxAge
+}
+
 // recent returns the answer for repo's latest release (stable or with prereleases) if it was checked
 // recently enough to reuse.
 func (c *Cache) recent(repo string, prerelease bool) (*Release, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	e, ok := c.releases[key(repo, kind(prerelease))]
 	if !ok {
 		return nil, false
@@ -56,32 +68,45 @@ func (c *Cache) recent(repo string, prerelease bool) (*Release, bool) {
 	if e.Release != nil && e.Checked.Sub(e.Release.Published) < newRelease {
 		age = newReleaseMaxAge
 	}
-	return e.Release, c.now().Sub(e.Checked) < age
+	return e.Release, c.fresh(e.Checked, age)
 }
 
 func (c *Cache) noStable(repo string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	e, ok := c.releases[key(repo, "no stable")]
-	return ok && c.now().Sub(e.Checked) < noStableMaxAge
+	return ok && c.fresh(e.Checked, noStableMaxAge)
 }
 
-func (c *Cache) put(repo string, prerelease bool, r *Release) {
-	c.releases[key(repo, kind(prerelease))] = cacheEntry{r, c.now()}
-	c.save()
+func (c *Cache) put(repo string, prerelease bool, r *Release) { c.set(key(repo, kind(prerelease)), r) }
+func (c *Cache) putNoStable(repo string)                      { c.set(key(repo, "no stable"), nil) }
+
+func (c *Cache) set(k string, r *Release) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.releases[k] = cacheEntry{r, c.now()}
+	c.changed = true
 }
 
-func (c *Cache) putNoStable(repo string) {
-	c.releases[key(repo, "no stable")] = cacheEntry{nil, c.now()}
-	c.save()
-}
-
-// save writes the file through a temp file, so a crash never leaves it half-written.
-func (c *Cache) save() {
+// Save writes what changed to the file, through a temp file so a crash never leaves it half-written.
+// Answers too old to be reused are left out.
+func (c *Cache) Save() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.changed {
+		return
+	}
+	for k, e := range c.releases {
+		if !c.fresh(e.Checked, noStableMaxAge) {
+			delete(c.releases, k)
+		}
+	}
 	data, err := json.Marshal(c.releases)
 	if err != nil || os.MkdirAll(filepath.Dir(c.path), 0o755) != nil {
 		return
 	}
-	if os.WriteFile(c.path+".tmp", data, 0o644) == nil {
-		os.Rename(c.path+".tmp", c.path)
+	if os.WriteFile(c.path+".tmp", data, 0o644) == nil && os.Rename(c.path+".tmp", c.path) == nil {
+		c.changed = false
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,20 +19,57 @@ import (
 // Extract unpacks file into dest. .zip and .tar.gz are handled in Go; .7z and .tar.xz need 7-Zip or
 // the system's tar (built into Windows 10 and later, macOS and Linux).
 func Extract(file, dest string) error {
+	info, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
 		return err
 	}
+	// A small archive that unpacks to far more (a "zip bomb") would fill the drive
+	left := max(info.Size()*maxRatio, minLimit)
 	lower := strings.ToLower(file)
 	switch {
 	case strings.HasSuffix(lower, ".zip"):
-		return unzip(file, dest)
+		return unzip(file, dest, &left)
 	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
-		return untarGz(file, dest)
+		return untarGz(file, dest, &left)
 	}
-	return extractWithTool(file, dest)
+	if err := extractWithTool(file, dest); err != nil {
+		return err
+	}
+	return noLinks(dest, filepath.Base(file))
 }
 
-func unzip(file, dest string) error {
+// The unpacked size allowed: up to 100 times the archive's, or 2 GB (tests lower it).
+var maxRatio, minLimit int64 = 100, 2 << 30
+
+// limited reads r, failing once more than *left bytes were read from all of an archive's files.
+type limited struct {
+	r    io.Reader
+	left *int64
+}
+
+func (l limited) Read(p []byte) (int, error) {
+	n, err := l.r.Read(p)
+	if *l.left -= int64(n); *l.left < 0 {
+		return n, errors.New("the archive unpacks to far more than its size (a zip bomb?); not extracting it")
+	}
+	return n, err
+}
+
+// noLinks refuses links (and Windows junctions) that 7-Zip or tar extracted: copying through one could
+// read or write files outside the folder. The Go extractors skip links.
+func noLinks(dir, name string) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && d.Type()&(fs.ModeSymlink|fs.ModeIrregular) != 0 {
+			return fmt.Errorf("%s has a link in it (%s); not using it", name, d.Name())
+		}
+		return err
+	})
+}
+
+func unzip(file, dest string, left *int64) error {
 	r, err := zip.OpenReader(file)
 	if err != nil {
 		return err
@@ -52,7 +90,7 @@ func unzip(file, dest string) error {
 		if err != nil {
 			return err
 		}
-		err = writeFile(target, src, f.Mode())
+		err = writeFile(target, limited{src, left}, f.Mode())
 		src.Close()
 		if err != nil {
 			return err
@@ -61,7 +99,7 @@ func unzip(file, dest string) error {
 	return nil
 }
 
-func untarGz(file, dest string) error {
+func untarGz(file, dest string, left *int64) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -91,7 +129,7 @@ func untarGz(file, dest string) error {
 				return err
 			}
 		case tar.TypeReg:
-			if err := writeFile(target, tr, h.FileInfo().Mode()); err != nil {
+			if err := writeFile(target, limited{tr, left}, h.FileInfo().Mode()); err != nil {
 				return err
 			}
 		} // links and special files are skipped

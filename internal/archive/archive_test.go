@@ -103,7 +103,7 @@ func TestExtractRefusesPathsOutsideTheFolder(t *testing.T) {
 			t.Errorf("%s: got %v", file, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "evil.dll")); err == nil {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "evil.dll")); err == nil {
 		t.Error("a file was written outside the folder")
 	}
 }
@@ -212,5 +212,57 @@ func TestPruneBackups(t *testing.T) {
 	}
 	if strings.Join(names, ",") != "2026-02-01_10-00-00,2026-03-01_10-00-00,2026-04-01_10-00-00,not-a-backup" {
 		t.Errorf("left: %v", names)
+	}
+}
+
+func TestExtractRefusesZipBombs(t *testing.T) {
+	realRatio, realMin := maxRatio, minLimit
+	t.Cleanup(func() { maxRatio, minLimit = realRatio, realMin })
+	maxRatio, minLimit = 1, 1000
+	dir := t.TempDir()
+	big := strings.Repeat("a", 5000) // compresses to far less than 1000 bytes
+	for _, file := range []string{
+		makeZip(t, filepath.Join(dir, "bomb.zip"), map[string]string{"a.txt": big}),
+		makeTarGz(t, filepath.Join(dir, "bomb.tar.gz"), map[string]string{"a.txt": big}),
+	} {
+		if err := Extract(file, filepath.Join(dir, "out")); err == nil || !strings.Contains(err.Error(), "zip bomb") {
+			t.Errorf("%s: got %v", file, err)
+		}
+	}
+}
+
+func TestNoLinks(t *testing.T) {
+	dir := tree(t, t.TempDir(), map[string]string{"a/b.dll": "x"})
+	if err := noLinks(dir, "tool.7z"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "a"), filepath.Join(dir, "link")); err != nil {
+		t.Skip("can't make links here:", err)
+	}
+	if err := noLinks(dir, "tool.7z"); err == nil || !strings.Contains(err.Error(), "link") {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestRenameAndSubfolderStayInside(t *testing.T) {
+	src := tree(t, t.TempDir(), map[string]string{"a.dll": "x"})
+	var j Journal
+	for _, to := range []string{`..\..\evil.dll`, "../evil.dll", "sub/a.dll", ".."} {
+		if _, err := Copy(src, t.TempDir(), t.TempDir(), Options{Rename: map[string]string{"a.dll": to}}, &j); err == nil {
+			t.Errorf("rename to %q was allowed", to)
+		}
+	}
+	if _, err := ContentRoot(src, "../.."); err == nil {
+		t.Error("a subfolder outside the archive was allowed")
+	}
+}
+
+func TestMoveKeepsTheSourceWhenItCantRename(t *testing.T) {
+	src := tree(t, t.TempDir(), map[string]string{"a/b.dll": "x"})
+	if err := Move(src, filepath.Join(t.TempDir(), "missing", "folder", "x")); err == nil {
+		t.Fatal("a move into a missing folder should fail")
+	}
+	if read(t, filepath.Join(src, "a", "b.dll")) != "x" {
+		t.Error("the source must be left as it was")
 	}
 }
