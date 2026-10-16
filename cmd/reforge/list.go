@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/VGRichi/Reforge/internal/applist"
@@ -140,13 +141,9 @@ func runRemove(c *cli, args []string) error {
 	if len(removed) == 0 {
 		return nil
 	}
-	var keep []*applist.App
-	for _, a := range apps {
-		if matchesAny(a.Name, names) {
-			fmt.Fprintf(c.stdout, "Stopped tracking %s\n", a.Name)
-		} else {
-			keep = append(keep, a)
-		}
+	keep := slices.DeleteFunc(apps, func(a *applist.App) bool { return slices.Contains(removed, a) })
+	for _, a := range removed {
+		fmt.Fprintf(c.stdout, "Stopped tracking %s\n", a.Name)
 	}
 	return applist.Save(listPath, keep)
 }

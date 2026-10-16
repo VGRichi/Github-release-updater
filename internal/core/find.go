@@ -1,14 +1,15 @@
 package core
 
 import (
+	"io/fs"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/VGRichi/Reforge/internal/archive"
 	"github.com/VGRichi/Reforge/internal/pick"
 	"github.com/VGRichi/Reforge/internal/system"
 	"github.com/VGRichi/Reforge/internal/version"
@@ -89,14 +90,16 @@ func (e *Engine) downloads(folders []string) []download {
 	}
 	var files []file
 	for _, folder := range folders {
-		if !isDir(folder) {
+		if !archive.IsDir(folder) {
 			e.warn("Folder not found: %s", folder)
 		}
 	}
-	eachFolder(folders, func(dir string) {
-		entries, _ := os.ReadDir(dir)
+	eachFolder(folders, func(dir string, entries []fs.DirEntry) {
 		for _, entry := range entries {
-			if info, err := entry.Info(); err == nil && !entry.IsDir() && downloadExts.MatchString(entry.Name()) {
+			if entry.IsDir() || !downloadExts.MatchString(entry.Name()) {
+				continue
+			}
+			if info, err := entry.Info(); err == nil {
 				files = append(files, file{filepath.Join(dir, entry.Name()), info.ModTime().UnixNano()})
 			}
 		}

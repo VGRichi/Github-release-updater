@@ -21,7 +21,7 @@ func ContentRoot(extracted, subfolder string) (string, error) {
 	root := extracted
 	for {
 		if subfolder != "" {
-			if direct := filepath.Join(root, subfolder); isDir(direct) {
+			if direct := filepath.Join(root, subfolder); IsDir(direct) {
 				return direct, nil
 			}
 		}
@@ -202,7 +202,8 @@ func copyFile(src, dst string) error {
 	return writeFile(dst, in, info.Mode())
 }
 
-func isDir(path string) bool {
+// IsDir reports whether path is a folder.
+func IsDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }

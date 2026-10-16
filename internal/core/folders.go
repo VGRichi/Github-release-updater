@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,7 +23,7 @@ func (e *Engine) updateFolders(app *applist.App, release *github.Release, r *Res
 			continue
 		}
 		dests = append(dests, d)
-		if !isDir(d) {
+		if !archive.IsDir(d) {
 			missing = append(missing, d)
 		}
 	}
@@ -75,7 +74,7 @@ func (e *Engine) updateFolders(app *applist.App, release *github.Release, r *Res
 		}
 		e.verbose("Copied %d file(s) to %s", n, dest)
 	}
-	if isDir(backups) {
+	if archive.IsDir(backups) {
 		e.verbose("Replaced files were backed up to %s", backups)
 	}
 	archive.PruneBackups(allBackups, e.BackupsToKeep)
@@ -91,9 +90,4 @@ func (e *Engine) extract(asset *github.Asset, file string) (string, error) {
 	e.progress("Extracting %s", asset.Name)
 	extracted := filepath.Join(filepath.Dir(file), "extracted")
 	return extracted, archive.Extract(file, extracted)
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
