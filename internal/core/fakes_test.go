@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,9 +24,12 @@ type fakeGitHub struct {
 	downloads []string
 	latest    []bool        // the prerelease flag of each Latest call
 	repos     []github.Repo // what Search finds
+	mu        sync.Mutex
 }
 
 func (f *fakeGitHub) Latest(repo string, prerelease bool) (*github.Release, error) {
+	f.mu.Lock() // Check asks from several goroutines
+	defer f.mu.Unlock()
 	f.latest = append(f.latest, prerelease)
 	return f.release, f.err
 }

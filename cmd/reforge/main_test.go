@@ -74,9 +74,12 @@ func TestHelpVersionAndUnknownCommands(t *testing.T) {
 	if code := run(nil, nil, &out, &errOut); code != 0 || !strings.Contains(out.String(), "Commands:") {
 		t.Errorf("no arguments: %d %q", code, out.String())
 	}
+	if strings.Contains(out.String(), "  version ") {
+		t.Error("the banner shows the version; no version command in the help")
+	}
 	out.Reset()
-	if code := run([]string{"version"}, nil, &out, &errOut); code != 0 || out.String() != "reforge dev\n" {
-		t.Errorf("version: %d %q", code, out.String())
+	if code := run([]string{"--version"}, nil, &out, &errOut); code != 0 || out.String() != "reforge dev\n" {
+		t.Errorf("--version: %d %q", code, out.String())
 	}
 	if code := run([]string{"bogus"}, nil, &out, &errOut); code != 2 {
 		t.Errorf("unknown command: %d", code)
@@ -201,8 +204,14 @@ func TestAddInstallsAnAppThatIsNotInstalled(t *testing.T) {
 
 func TestAddForceKeepsWhatWasLearned(t *testing.T) {
 	config := configIn(t)
+	useFakes(t, nil) // never the real GitHub
 	applist.Save(config, []*applist.App{{Name: "Tool", Repository: "o/tool", Type: "archive", Destination: applist.Strings{t.TempDir()}, HadDigest: true, InstalledVersion: "v1"}})
-	reforge(t, config, "add", "o/tool", "--name", "Tool", "--dest", t.TempDir(), "--force")
+	if code, _, errOut := reforge(t, config, "add", "o/tool", "--name", "Tool", "--dest", t.TempDir(), "--force"); code != 0 {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	if code, _, _ := reforge(t, config, "add", "o/tool", "--dest", t.TempDir(), "--rename", `a.dll=..\b.dll`); code != 2 {
+		t.Error("a rename to a path must be refused")
+	}
 	apps, _ := applist.Load(config)
 	if len(apps) != 1 || !apps[0].HadDigest || apps[0].InstalledVersion != "v1" {
 		t.Errorf("got %+v", apps[0])

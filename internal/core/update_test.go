@@ -390,3 +390,35 @@ func TestCleanWorkRoot(t *testing.T) {
 		t.Errorf("left: %v", entries)
 	}
 }
+
+func TestCheckAsksOnceForEachRepositoryAndUpdateUsesIt(t *testing.T) {
+	te := newEngine(t)
+	te.gh.release = release("v1.1.0")
+	te.sys.programs = []system.Program{program("PhotoCraft", "1.1.0", true, true)}
+	folder := t.TempDir()
+	apps := []*applist.App{
+		{Name: "PhotoCraft", Repository: "storytold/photocraft"},
+		{Name: "Missing", Repository: "o/missing"}, // not installed: not asked about
+		{Name: "Tool", Repository: "o/tool", Type: "download", Folder: folder, InstalledVersion: "v1.1.0"},
+		{Name: "Tool too", Repository: "O/Tool", Type: "download", Folder: folder, InstalledVersion: "v1.1.0"},
+	}
+	te.Check(apps)
+	if len(te.gh.latest) != 2 {
+		t.Fatalf("%d checks; want one each for photocraft and tool", len(te.gh.latest))
+	}
+	for _, app := range apps {
+		te.Update(app)
+	}
+	if len(te.gh.latest) != 2 {
+		t.Errorf("%d checks; Update should use Check's answers", len(te.gh.latest))
+	}
+}
+
+func TestToolUpToDateWrittenDifferently(t *testing.T) {
+	te := newEngine(t)
+	te.gh.release = release("v2.0")
+	app := &applist.App{Name: "Tool", Repository: "o/tool", Type: "archive", Destination: applist.Strings{t.TempDir()}, InstalledVersion: "2.0.0"}
+	if r := te.Update(app); r.Status != UpToDate {
+		t.Errorf("got %s: %s", r.Status, r.Note)
+	}
+}

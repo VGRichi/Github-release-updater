@@ -45,7 +45,9 @@ func runList(c *cli, args []string) error {
 	e.DryRun = true // a check: nothing is downloaded, and list never saves the list
 	entries := []listEntry{}
 	var rows [][]string
-	for _, a := range c.matching(apps, names) {
+	apps = c.matching(apps, names)
+	e.Check(apps)
+	for _, a := range apps {
 		r := e.Update(a)
 		le := listEntry{Name: a.Name, Repository: a.Repository, Type: "Installer", Installed: r.Installed, Latest: r.Latest,
 			Status: string(r.Status), Note: r.Note, Destination: a.Destination, Publisher: a.Publisher, Trusted: a.AllowUnverified}
@@ -102,7 +104,9 @@ func runUpdate(c *cli, args []string) error {
 	e := c.engine(listPath)
 	e.CleanWorkRoot()
 	var results []core.Result
-	for _, app := range c.matching(apps, names) {
+	todo := c.matching(apps, names)
+	e.Check(todo) // the checks at once; then the updates one at a time, since they may ask questions
+	for _, app := range todo {
 		before, _ := json.Marshal(app)
 		e.Progress = func(msg string) { c.progress(app.Name + ": " + msg) }
 		r := e.Update(app)

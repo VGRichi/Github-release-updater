@@ -2,6 +2,7 @@
 package github
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,18 +37,39 @@ type Asset struct {
 	Size   int64  `json:"size"`
 }
 
-// Client talks to the GitHub API. Token is optional; without it GitHub allows 60 requests an hour.
+// Client talks to the GitHub API. It's safe to use from several goroutines at once.
 type Client struct {
 	HTTP  *http.Client
 	API   string
-	Token string
-	Cache *Cache // optional: recent answers, reused instead of asking again
+	Token string        // optional; without it GitHub allows 60 requests an hour
+	Auth  func() string // finds the token when Token is empty, only once a request needs it
+	Cache *Cache        // optional: recent answers, reused instead of asking again
 	now   func() time.Time
+
+	authOnce sync.Once
+	mu       sync.Mutex
+	limited  error // GitHub's hourly limit was reached: further requests would fail too
 }
 
-// New returns a client for api.github.com.
-func New(token string) *Client {
-	return &Client{HTTP: http.DefaultClient, API: "https://api.github.com", Token: token}
+const (
+	apiTimeout   = 30 * time.Second // for one API request
+	stallTimeout = time.Minute      // for a download that stops sending
+)
+
+// New returns a client for api.github.com that finds its token with auth when it first needs one.
+func New(auth func() string) *Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.ResponseHeaderTimeout = apiTimeout
+	return &Client{HTTP: &http.Client{Transport: t}, API: "https://api.github.com", Auth: auth}
+}
+
+func (c *Client) token() string {
+	c.authOnce.Do(func() {
+		if c.Token == "" && c.Auth != nil {
+			c.Token = c.Auth()
+		}
+	})
+	return c.Token
 }
 
 // StatusError is a GitHub reply that isn't a success.
@@ -89,7 +112,7 @@ func (c *Client) latest(repo string, prerelease bool) (*Release, error) {
 		}
 	}
 	var all []Release
-	if err := c.get("/repos/"+repo+"/releases?per_page=10", &all); err != nil {
+	if err := c.get("/repos/"+repo+"/releases?per_page=5", &all); err != nil {
 		return nil, err
 	}
 	for i := range all {
@@ -101,14 +124,22 @@ func (c *Client) latest(repo string, prerelease bool) (*Release, error) {
 }
 
 func (c *Client) get(path string, v any) error {
-	req, err := http.NewRequest(http.MethodGet, c.API+path, nil)
+	c.mu.Lock()
+	limited := c.limited
+	c.mu.Unlock()
+	if limited != nil { // asking again before the limit resets only fails again
+		return limited
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.API+path, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("User-Agent", "Reforge")
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+	if token := c.token(); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -119,7 +150,11 @@ func (c *Client) get(path string, v any) error {
 	case resp.StatusCode == http.StatusNotFound:
 		return &StatusError{resp.StatusCode, "repository not found on GitHub (or it's private)"}
 	case (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) && resp.Header.Get("X-RateLimit-Remaining") == "0":
-		return &StatusError{resp.StatusCode, c.limitMessage(resp.Header)}
+		err := &StatusError{resp.StatusCode, c.limitMessage(resp.Header)}
+		c.mu.Lock()
+		c.limited = err
+		c.mu.Unlock()
+		return err
 	case resp.StatusCode >= 300:
 		return &StatusError{resp.StatusCode, fmt.Sprintf("GitHub replied %s", resp.Status)}
 	}
@@ -144,7 +179,7 @@ func (c *Client) limitMessage(h http.Header) string {
 		}
 	}
 	msg := fmt.Sprintf("GitHub's limit of %s checks an hour was reached; it resets %s", limit, when)
-	if c.Token == "" {
+	if c.token() == "" {
 		msg += ". For 5,000 an hour, sign in with the GitHub CLI (gh auth login) or set GITHUB_TOKEN to a GitHub token"
 	}
 	return msg
@@ -154,7 +189,12 @@ func (c *Client) limitMessage(h http.Header) string {
 // match. It doesn't send the token: release files are public, and the download host isn't GitHub's API.
 func (c *Client) Download(a Asset, dir string) (string, error) {
 	file := filepath.Join(dir, filepath.Base(a.Name))
-	req, err := http.NewRequest(http.MethodGet, a.URL, nil)
+	// A big download may take long, so there's no time limit for it all; only for it to stop sending
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stalled := time.AfterFunc(stallTimeout, cancel)
+	defer stalled.Stop()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -172,7 +212,14 @@ func (c *Client) Download(a Asset, dir string) (string, error) {
 		return "", err
 	}
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(out, hash), resp.Body)
+	var body io.Reader = resp.Body
+	if a.Size > 0 { // more than GitHub lists is broken too; no need to read it all
+		body = io.LimitReader(body, a.Size+1)
+	}
+	n, err := io.Copy(io.MultiWriter(out, hash), readFunc(func(p []byte) (int, error) {
+		stalled.Reset(stallTimeout)
+		return body.Read(p)
+	}))
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
@@ -191,6 +238,10 @@ func (c *Client) Download(a Asset, dir string) (string, error) {
 	}
 	return file, nil
 }
+
+type readFunc func([]byte) (int, error)
+
+func (f readFunc) Read(p []byte) (int, error) { return f(p) }
 
 // Repo is a repository found by Search.
 type Repo struct {

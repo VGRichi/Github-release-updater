@@ -35,7 +35,7 @@ func (e *Engine) updateFolders(app *applist.App, release *github.Release, r *Res
 	case len(missing) > 0:
 		r.set(Skipped, "Folder not found: "+strings.Join(missing, ", "))
 		return nil
-	case app.InstalledVersion == release.Tag:
+	case sameVersion(app.InstalledVersion, release.Tag):
 		r.Status = UpToDate
 		return nil
 	}

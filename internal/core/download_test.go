@@ -121,6 +121,14 @@ func TestDetectVersionAndExtractedFolder(t *testing.T) {
 	if got := DetectVersion(dir, "doitsujin/dxvk"); got != "3.1.1" {
 		t.Errorf("dxvk: got %q", got)
 	}
+	// Alone, so a newer file can't hide it: the 7 of .7z isn't part of the version
+	only := writeTree(t, t.TempDir(), map[string]string{"Optiscaler_0.9.4.7z": "", "tool-1.2.tar.gz": ""})
+	if got := DetectVersion(only, "optiscaler/OptiScaler"); got != "0.9.4" {
+		t.Errorf("Optiscaler_0.9.4.7z: got %q", got)
+	}
+	if got := DetectVersion(only, "o/tool"); got != "1.2" {
+		t.Errorf("tool-1.2.tar.gz: got %q", got)
+	}
 	if got := DetectVersion(dir, "storytold/photocraft"); got != "" {
 		t.Errorf("nothing there: got %q", got)
 	}

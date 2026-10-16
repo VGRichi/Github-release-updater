@@ -58,8 +58,15 @@ it doesn't end up in shell history.
   releases are reused for an hour (`cache.json` next to the list), a release
   published less than an hour before it was checked only for 5 minutes (its files may still be
   uploading), and "no stable release" is remembered for a day, saving a request per check. Rate-limit
-  errors say when the limit resets and how to sign in. Only the official API is used: ETag requests
-  still counted without a token (tested), and the web's /releases/latest redirect isn't an API.
+  errors say when the limit resets and how to sign in, and once it's reached nothing more is asked
+  until the next run. The token (`gh auth token`) is only looked up when a request is made. Only the
+  official API is used: ETag requests still counted without a token (tested), and the web's
+  /releases/latest redirect isn't an API.
+- **Fast checks**: `list` and `update` ask GitHub about up to 6 apps at once, then go through the apps
+  one at a time (updates may ask questions). API requests time out after 30 s, and a download that
+  stops sending for a minute.
+- **Safe extraction**: no file outside the folder, no links, and no more than 100 times the archive's
+  size (at least 2 GB). `--rename` and `--subfolder` stay inside their folders.
 - **Double-click** (Windows): shows the help and turns the window into a PowerShell prompt, instead of
   a window that closes at once.
 
@@ -75,7 +82,8 @@ it doesn't end up in shell history.
 | `internal/archive` | extracting, copying with backups and rollback |
 | `internal/applist`, `internal/version`, `internal/wildcard` | the list file, version numbers, `*` patterns |
 
-`internal/system` is the only OS-specific package: `system_windows.go` (registry, ShellExecuteEx so
+`internal/system` holds the OS-specific code (besides telling a move to another drive apart, in
+`internal/archive`): `system_windows.go` (registry, ShellExecuteEx so
 installers can ask for admin, `:Zone.Identifier`, `winget list`) and `system_other.go`. `core` takes
 it as an interface, so every rule is tested with a fake system and a fake GitHub on all three OSes.
 

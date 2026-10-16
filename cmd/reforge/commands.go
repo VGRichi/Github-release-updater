@@ -25,21 +25,26 @@ var downloadsFolder = system.DownloadsFolder
 // newEngine connects the engine to the real GitHub and OS; tests replace it.
 var newEngine = func(c *cli) *core.Engine {
 	return &core.Engine{
-		GitHub: github.New(githubToken()), System: system.New(), Ask: c, Arch: pick.Arch(runtime.GOARCH),
+		GitHub: github.New(githubToken), System: system.New(), Ask: c, Arch: pick.Arch(runtime.GOARCH),
 		WorkRoot: os.TempDir(), BackupsToKeep: 3,
 		Progress: c.progress, Verbose: c.detail, Warn: c.warn,
 	}
 }
 
-// engine returns an engine whose backups and cache of recent GitHub answers go next to the list file.
+// engine returns the command's engine (one per command, so the installed apps are read once), with
+// backups and a cache of recent GitHub answers next to the list file. run saves the cache at the end.
 func (c *cli) engine(listPath string) *core.Engine {
-	e := newEngine(c)
-	dir := filepath.Dir(listPath)
-	e.BackupRoot = filepath.Join(dir, "backups")
-	if gh, ok := e.GitHub.(*github.Client); ok {
-		gh.Cache = github.OpenCache(filepath.Join(dir, "cache.json"))
+	if c.eng != nil {
+		return c.eng
 	}
-	return e
+	c.eng = newEngine(c)
+	dir := filepath.Dir(listPath)
+	c.eng.BackupRoot = filepath.Join(dir, "backups")
+	if gh, ok := c.eng.GitHub.(*github.Client); ok {
+		gh.Cache = github.OpenCache(filepath.Join(dir, "cache.json"))
+		c.cache = gh.Cache
+	}
+	return c.eng
 }
 
 // githubToken is the token to use with GitHub's API: GITHUB_TOKEN or GH_TOKEN, or else the GitHub CLI's
