@@ -30,7 +30,6 @@ Commands:
   list [name...]     what you track, and which have updates
   update [name...]   install the updates
   remove <name...>   stop tracking (doesn't uninstall)
-  version            show Reforge's version
 
 Run 'reforge <command> --help' for its options. Names can use wildcards like 'DXVK*'.
 For more than GitHub's 60 checks an hour, sign in with the GitHub CLI (gh auth login) or set GITHUB_TOKEN.
@@ -80,7 +79,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, banner(version, color), "\n", usage)
 		return 0
 	}
-	if args[0] == "version" || args[0] == "--version" {
+	if args[0] == "--version" { // for scripts; people see the version in the banner
 		fmt.Fprintf(stdout, "reforge %s\n", version)
 		return 0
 	}

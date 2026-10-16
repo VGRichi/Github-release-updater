@@ -74,9 +74,12 @@ func TestHelpVersionAndUnknownCommands(t *testing.T) {
 	if code := run(nil, nil, &out, &errOut); code != 0 || !strings.Contains(out.String(), "Commands:") {
 		t.Errorf("no arguments: %d %q", code, out.String())
 	}
+	if strings.Contains(out.String(), "  version ") {
+		t.Error("the banner shows the version; no version command in the help")
+	}
 	out.Reset()
-	if code := run([]string{"version"}, nil, &out, &errOut); code != 0 || out.String() != "reforge dev\n" {
-		t.Errorf("version: %d %q", code, out.String())
+	if code := run([]string{"--version"}, nil, &out, &errOut); code != 0 || out.String() != "reforge dev\n" {
+		t.Errorf("--version: %d %q", code, out.String())
 	}
 	if code := run([]string{"bogus"}, nil, &out, &errOut); code != 2 {
 		t.Errorf("unknown command: %d", code)
