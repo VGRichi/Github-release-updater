@@ -47,7 +47,11 @@ func runList(c *cli, args []string) error {
 	entries := []listEntry{}
 	var rows [][]string
 	apps = c.matching(apps, names)
+	if !*asJSON {
+		c.say(cyan, fmt.Sprintf("Checking %d app(s) for updates...", len(apps)))
+	}
 	e.Check(apps)
+	updates := 0
 	for _, a := range apps {
 		r := e.Update(a)
 		le := listEntry{Name: a.Name, Repository: a.Repository, Type: "Installer", Installed: r.Installed, Latest: r.Latest,
@@ -60,13 +64,25 @@ func runList(c *cli, args []string) error {
 			le.Type, le.Folder, folder = "Download", a.Folder, a.Folder
 		}
 		c.failed = c.failed || r.Status == core.Failed
+		if r.Status == core.UpdateAvailable {
+			updates++
+		}
 		entries = append(entries, le)
-		rows = append(rows, []string{le.Name, le.Installed, le.Latest, listStatus(r), folder})
+		rows = append(rows, []string{le.Name, le.Installed, le.Latest, c.status(r.Status, listStatus(r)), folder})
 	}
 	if *asJSON {
 		return c.json(entries)
 	}
 	c.table([]string{"Name", "Installed", "Latest", "Status", "Folder"}, rows)
+	switch {
+	case c.failed:
+	case updates == 1:
+		c.say(yellow, "1 update available. Install it with: reforge update")
+	case updates > 1:
+		c.say(yellow, fmt.Sprintf("%d updates available. Install them with: reforge update", updates))
+	case len(apps) > 0:
+		c.say(green, "Everything is up to date.")
+	}
 	return nil
 }
 
@@ -106,6 +122,9 @@ func runUpdate(c *cli, args []string) error {
 	e.CleanWorkRoot()
 	var results []core.Result
 	todo := c.matching(apps, names)
+	if !*asJSON {
+		c.say(cyan, fmt.Sprintf("Checking %d app(s) for updates...", len(todo)))
+	}
 	e.Check(todo) // the checks at once; then the updates one at a time, since they may ask questions
 	for _, app := range todo {
 		before, _ := json.Marshal(app)
@@ -159,10 +178,21 @@ func (c *cli) printResults(results []core.Result, asJSON bool) error {
 		return nil
 	}
 	var rows [][]string
+	changed := 0
 	for _, r := range results {
-		rows = append(rows, []string{r.Name, r.Installed, r.Latest, readable(r.Status), r.Note})
+		rows = append(rows, []string{r.Name, r.Installed, r.Latest, c.status(r.Status, readable(r.Status)), r.Note})
+		if r.Status != core.UpToDate {
+			changed++
+		}
+	}
+	if changed == 0 {
+		c.say(green, "Everything is up to date.")
+		return nil
 	}
 	c.table([]string{"Name", "Installed", "Latest", "Status", "Note"}, rows)
+	if !c.failed {
+		c.say(green, "Done.")
+	}
 	return nil
 }
 
