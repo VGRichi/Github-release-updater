@@ -378,3 +378,29 @@ func TestAddWithoutANameSaysWhyNothingIsNew(t *testing.T) {
 		t.Errorf("tracked apps: %q", errOut)
 	}
 }
+
+func TestColoursKeepColumnsAligned(t *testing.T) {
+	var out bytes.Buffer
+	c := &cli{stdout: &out, color: true}
+	c.table([]string{"Name", "Status"}, [][]string{
+		{"dxvk", c.status(core.UpToDate, "Up to date")},
+		{"PhotoCraft", c.status(core.UpdateAvailable, "Update available")},
+	})
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 4 || !strings.HasPrefix(lines[2], "dxvk        "+green) || !strings.HasPrefix(lines[3], "PhotoCraft  "+yellow) {
+		t.Errorf("got %q", lines)
+	}
+}
+
+func TestListSaysWhenEverythingIsUpToDate(t *testing.T) {
+	config := configIn(t)
+	applist.Save(config, []*applist.App{{Name: "PhotoCraft", Repository: "storytold/photocraft"}})
+	useFakes(t, &github.Release{Tag: "v1.0.0", Assets: []github.Asset{{Name: "PhotoCraft-x64.msi"}}},
+		system.Program{Name: "PhotoCraft", Version: "1.0.0", PerUser: true, MSI: true})
+	if _, _, errOut := reforge(t, config, "list"); !strings.Contains(errOut, "Everything is up to date.") || strings.Contains(errOut, "\x1b[") {
+		t.Errorf("list: %q (and no colours outside a terminal)", errOut)
+	}
+	if _, out, errOut := reforge(t, config, "update"); !strings.Contains(errOut, "Everything is up to date.") || out != "" {
+		t.Errorf("update: %q %q", out, errOut)
+	}
+}

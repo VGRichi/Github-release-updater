@@ -26,42 +26,49 @@ const (
 	orange = "\x1b[38;2;232;104;48m"
 	bold   = "\x1b[1m"
 	dim    = "\x1b[2m"
+	green  = "\x1b[32m"
+	yellow = "\x1b[33m"
+	red    = "\x1b[31m"
+	cyan   = "\x1b[36m"
 	reset  = "\x1b[0m"
 )
+
+// paint colours s when color is on.
+func paint(color bool, code, s string) string {
+	if !color || s == "" {
+		return s
+	}
+	return code + s + reset
+}
 
 // banner is the logo with the name and version beside it, in a rounded box. Colours are left out
 // when the output isn't a terminal (a file, a pipe) or NO_COLOR is set.
 func banner(ver string, color bool) string {
-	paint := func(code, s string) string {
-		if !color || s == "" {
-			return s
-		}
-		return code + s + reset
-	}
+	p := func(code, s string) string { return paint(color, code, s) }
 	text := []string{
 		"",
-		paint(bold, "Reforge "+ver),
+		p(bold, "Reforge "+ver),
 		"",
-		paint(dim, "A package manager for"),
-		paint(dim, "GitHub releases."),
+		p(dim, "A package manager for"),
+		p(dim, "GitHub releases."),
 		"",
 		"",
-		paint(dim, "github.com/VGRichi/Reforge"),
+		p(dim, "github.com/VGRichi/Reforge"),
 	}
 	const textWidth = 30 // keeps the box 53 characters wide, so it fits narrow windows
 	logo := append(append([]string{}, logoArrow...), logoAnvil...)
 	var b strings.Builder
 	border := strings.Repeat("─", utf8.RuneCountInString(logo[0])+textWidth+4)
-	b.WriteString(paint(orange, "╭"+border+"╮") + "\n")
+	b.WriteString(p(orange, "╭"+border+"╮") + "\n")
 	for i, art := range logo {
 		if i < len(logoArrow) {
-			art = paint(orange, art)
+			art = p(orange, art)
 		}
 		line := text[i]
 		pad := strings.Repeat(" ", textWidth-visibleWidth(line))
-		fmt.Fprintf(&b, "%s %s  %s%s %s\n", paint(orange, "│"), art, line, pad, paint(orange, "│"))
+		fmt.Fprintf(&b, "%s %s  %s%s %s\n", p(orange, "│"), art, line, pad, p(orange, "│"))
 	}
-	b.WriteString(paint(orange, "╰"+border+"╯") + "\n")
+	b.WriteString(p(orange, "╰"+border+"╯") + "\n")
 	return b.String()
 }
 

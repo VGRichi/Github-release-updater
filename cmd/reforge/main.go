@@ -99,7 +99,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	case errors.Is(err, errUsage):
 		return 2
 	case err != nil:
-		fmt.Fprintf(stderr, "reforge: %s\n", err)
+		fmt.Fprintf(stderr, "%s %s\n", paint(c.colorErr, red, "reforge:"), err)
 		return 1
 	case c.failed:
 		return 1
